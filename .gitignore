@@ -1,0 +1,7 @@
+# 敏感信息与本地数据不入库
+config.json
+data/
+.zcode/
+__pycache__/
+*.pyc
+.venv/
