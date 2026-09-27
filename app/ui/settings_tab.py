@@ -69,6 +69,8 @@ class SettingsTab(Vertical):
         self._hint = Static(Text(
             "· API key 自动发现顺序：手动配置 > 环境变量 OPENCODE_GO_API_KEY"
             " > ZCode provider 配置 > OpenCode auth.json\n"
+            "· ZCode Start Plan 额度：自动读取 ZCode 桌面端本地日志（约 2 分钟"
+            "随桌面端刷新），无需任何配置\n"
             "· provider 过滤：空=当前套餐默认；*=全部；其它=provider 前缀\n"
             "· 数据库均为只读读取，本 App 唯一写入自己的 data/snapshots.db",
             style="dim"), id="settings-hint")
@@ -81,6 +83,10 @@ class SettingsTab(Vertical):
         t.append(mask(self._cfg.discovered_key) + "\n")
         t.append("来源: ", style="dim")
         t.append(self._cfg.discovered_from or "无\n")
+        from ..zcode_client import discover_zcode_token
+        ztok, zsrc = discover_zcode_token()
+        t.append("ZCode token: ", style="dim")
+        t.append(mask(ztok) + (f"（{zsrc}）" if zsrc else "") + "\n")
         return t
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
@@ -127,9 +133,15 @@ class SettingsTab(Vertical):
     async def _do_test(self) -> None:
         if self._conn_state is None:
             return
-        key = self._key_input.value.strip() or self._cfg.discovered_key
         self._conn_state.update(Text("测试中…", style="yellow"))
-        ok, msg = await asyncio.to_thread(_sync_test, key)
+        from .. import plans as plans_mod
+        plan = plans_mod.get_plan(self._cfg.active_plan)
+        if plan.quota_type == "zcode-start-plan":
+            from ..zcode_client import test_connection
+            ok, msg = await asyncio.to_thread(test_connection)
+        else:
+            key = self._key_input.value.strip() or self._cfg.discovered_key
+            ok, msg = await asyncio.to_thread(_sync_test, key)
         self._conn_state.update(
             Text(("✅ " if ok else "❌ ") + msg,
                  style="green" if ok else "red"))

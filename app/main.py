@@ -4,6 +4,8 @@
 """
 from __future__ import annotations
 
+import asyncio
+
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
@@ -72,7 +74,7 @@ class OCGoQuotaApp(App):
                 self._models_tab = ModelsTab(self.cfg, id="models-inner")
                 yield self._models_tab
             with TabPane("历史", id="history"):
-                self._history_tab = HistoryTab(id="history-inner")
+                self._history_tab = HistoryTab(self.cfg, id="history-inner")
                 yield self._history_tab
             with TabPane("设置", id="settings"):
                 yield SettingsTab(self.cfg, id="settings-inner")
@@ -123,8 +125,14 @@ class OCGoQuotaApp(App):
             self._models_tab.set_range(key)
 
     async def action_test_connection(self) -> None:
-        from .zen_client import test_connection
-        ok, msg = await test_connection(self.cfg.discovered_key or self.cfg.api_key)
+        plan = self._active_plan()
+        if plan.quota_type == "zcode-start-plan":
+            from .zcode_client import test_connection
+            ok, msg = await asyncio.to_thread(test_connection)
+        else:
+            from .zen_client import test_connection
+            ok, msg = await test_connection(
+                self.cfg.discovered_key or self.cfg.api_key)
         self.notify(("✅ " if ok else "❌ ") + msg, timeout=5,
                     severity="information" if ok else "error")
 

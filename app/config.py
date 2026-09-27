@@ -33,6 +33,7 @@ OPENCODE_DB_CANDIDATES = [
 @dataclass
 class Config:
     api_key: str = ""                # 留空则自动发现
+    zcode_token: str = ""            # ZCode Start Plan 的 JWT 手动覆盖（留空自动发现）
     poll_interval: int = 60          # 额度轮询秒数
     refresh_interval: int = 30       # UI 刷新秒数
     provider_filter: str = ""        # 空为当前套餐默认；"*"全部；其它=provider 前缀
@@ -60,10 +61,10 @@ def load_config() -> Config:
     if CONFIG_PATH.exists():
         try:
             data = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
-            for f in ("api_key", "poll_interval", "refresh_interval",
-                      "provider_filter", "active_plan", "background_image",
-                      "background_dim", "widget_width", "widget_height",
-                      "widget_opacity", "widget_topmost"):
+            for f in ("api_key", "zcode_token", "poll_interval",
+                      "refresh_interval", "provider_filter", "active_plan",
+                      "background_image", "background_dim", "widget_width",
+                      "widget_height", "widget_opacity", "widget_topmost"):
                 if f in data:
                     setattr(cfg, f, data[f])
         except (json.JSONDecodeError, OSError):
@@ -165,3 +166,32 @@ def find_db() -> tuple[Path | None, Path | None]:
                 return p
         return None
     return first(ZCODE_DB_CANDIDATES), first(OPENCODE_DB_CANDIDATES)
+
+
+# ZCode Start Plan 相关 provider（模型页用量统计的过滤前缀）。
+# 运行时 provider_id 会带 builtin:/account: 两种前缀，成对注册。
+DEFAULT_START_PLAN_PREFIXES = (
+    "builtin:bigmodel-start-plan", "account:bigmodel-start-plan",
+    "builtin:zai-start-plan", "account:zai-start-plan",
+)
+
+
+def discover_zcode_plan_providers() -> tuple[str, ...]:
+    """发现 ZCode Start Plan 的 provider_id 集合。
+
+    扫描 v2/config.json：id 含 start-plan、或 baseURL 指向 zcode-plan
+    网关的 provider，同时产出 builtin:/account: 两种运行时形态。
+    """
+    ids: list[str] = []
+    try:
+        v2 = json.loads(ZCODE_V2_CONFIG.read_text(encoding="utf-8"))
+        for pid, entry in (v2.get("provider") or {}).items():
+            pid = str(pid)
+            base = str((entry or {}).get("options", {}).get("baseURL", ""))
+            if "start-plan" in pid or "/zcode-plan" in base:
+                ids.append(pid)
+                if pid.startswith("builtin:"):
+                    ids.append("account:" + pid[len("builtin:"):])
+    except (OSError, ValueError):
+        pass
+    return tuple(dict.fromkeys(ids)) or DEFAULT_START_PLAN_PREFIXES

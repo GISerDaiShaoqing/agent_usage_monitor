@@ -12,6 +12,7 @@ from typing import Awaitable, Callable
 
 from . import config as cfg
 from .zen_client import QuotaSnapshot, fetch_quota
+from .zcode_client import fetch_quota as fetch_zcode_plan_quota
 
 
 # ---- 额度拉取器注册表：quota_type -> fetcher(api_key) ----
@@ -23,6 +24,7 @@ async def _fetch_zen_go(api_key: str) -> QuotaSnapshot:
 
 
 QUOTA_FETCHERS["zen-go"] = _fetch_zen_go
+QUOTA_FETCHERS["zcode-start-plan"] = fetch_zcode_plan_quota
 
 
 @dataclass
@@ -32,6 +34,7 @@ class PlanDef:
     quota_type: str                          # 额度接口类型
     provider_prefixes: tuple[str, ...] = ()  # 分模型统计的 provider 过滤（空=自动发现）
     note: str = ""                           # UI 提示（如未实现说明）
+    data_source: str = ""                    # 额度页展示的数据源说明
 
     async def fetch_quota(self, api_key: str) -> QuotaSnapshot:
         fetcher = QUOTA_FETCHERS.get(self.quota_type)
@@ -45,13 +48,22 @@ class PlanDef:
 
 
 # ---- 套餐注册表 ----
-# opencode-go: 已实现；其余为预留槽位（接新订阅时注册对应 fetcher 即可）
+# opencode-go / zcode-start-plan: 已实现；其余为预留槽位（接新订阅时注册对应 fetcher 即可）
 PLAN_DEFS: dict[str, PlanDef] = {
     "opencode-go": PlanDef(
         id="opencode-go",
         name="OpenCode Go",
         quota_type="zen-go",
         provider_prefixes=(),  # 空 = 自动发现（config.discover_provider_ids）
+        data_source="opencode.ai 官方用量端点",
+    ),
+    "zcode-start-plan": PlanDef(
+        id="zcode-start-plan",
+        name="ZCode Start Plan",
+        quota_type="zcode-start-plan",
+        provider_prefixes=(),  # 空 = 自动发现（config.discover_zcode_plan_providers）
+        note="免费领取的 token 额度，随 ZCode 桌面端本地日志刷新",
+        data_source="ZCode 桌面端本地日志",
     ),
     "bigmodel-coding-plan": PlanDef(
         id="bigmodel-coding-plan",
@@ -97,8 +109,10 @@ def cycle_plan(current_id: str) -> PlanDef:
 
 
 def plan_provider_prefixes(plan_id: str) -> tuple[str, ...]:
-    """分模型统计的 provider 过滤。opencode-go 动态发现；其余用注册前缀。"""
+    """分模型统计的 provider 过滤。opencode-go / zcode-start-plan 动态发现；其余用注册前缀。"""
     plan = get_plan(plan_id)
     if plan.id == "opencode-go":
         return cfg.discover_provider_ids()
+    if plan.id == "zcode-start-plan":
+        return cfg.discover_zcode_plan_providers()
     return plan.provider_prefixes

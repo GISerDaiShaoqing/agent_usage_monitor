@@ -7,7 +7,7 @@ from rich.text import Text
 from textual.containers import Horizontal, Vertical
 from textual.widgets import Static
 
-from ..zen_client import QuotaSnapshot, WindowUsage
+from ..zen_client import ALL_WINDOW_ORDER, QuotaSnapshot, WindowUsage
 
 BAR_WIDTH = 24
 
@@ -28,22 +28,23 @@ def render_bar(percent: float, width: int = BAR_WIDTH) -> Text:
     return Text(bar)
 
 
-def fmt_countdown(resets_at: datetime | None, now: datetime | None = None) -> str:
+def fmt_countdown(resets_at: datetime | None, now: datetime | None = None,
+                  verb: str = "重置") -> str:
     if resets_at is None:
-        return "重置时间未知"
+        return f"{verb}时间未知"
     now = now or datetime.now(timezone.utc)
     delta = resets_at - now
     if delta.total_seconds() <= 0:
-        return "即将重置"
+        return f"即将{verb}"
     total = int(delta.total_seconds())
     days, rem = divmod(total, 86400)
     hours, rem = divmod(rem, 3600)
     minutes = rem // 60
     if days > 0:
-        return f"{days}天{hours}小时后重置"
+        return f"{days}天{hours}小时后{verb}"
     if hours > 0:
-        return f"{hours}小时{minutes}分后重置"
-    return f"{minutes}分钟后重置"
+        return f"{hours}小时{minutes}分后{verb}"
+    return f"{minutes}分钟后{verb}"
 
 
 class WindowCard(Static):
@@ -66,7 +67,8 @@ class WindowCard(Static):
         lines.append("剩余 ", style="dim")
         lines.append(f"{usage.remaining_percent:.0f}%", style=f"bold {color}")
         lines.append("\n", style="default")
-        lines.append(fmt_countdown(usage.resets_at), style="dim")
+        verb = "到期" if usage.name == "grant" else "重置"
+        lines.append(fmt_countdown(usage.resets_at, verb=verb), style="dim")
         if usage.is_limited:
             lines.append("  已限流", style="bold red")
         if plan_name:
@@ -78,13 +80,22 @@ class QuotaTab(Vertical):
     def compose(self):
         self._cards: dict[str, WindowCard] = {}
         with Horizontal(id="quota-cards"):
-            for name, label in (("rolling", "5 小时"), ("weekly", "每周"),
-                                ("monthly", "每月")):
+            for name in ("rolling", "weekly", "monthly"):
                 card = WindowCard(id=f"card-{name}")
                 self._cards[name] = card
                 yield card
         self._status = Static("", id="quota-status")
         yield self._status
+
+    def _rebuild_cards(self, names: list[str]) -> None:
+        """按快照实际窗口重建卡片（如 Start Plan 只有单个 grant 窗口）。"""
+        container = self.query_one("#quota-cards")
+        container.remove_children()
+        self._cards = {}
+        for name in names:
+            card = WindowCard(id=f"card-{name}")
+            self._cards[name] = card
+            container.mount(card)
 
     def update_snapshot(self, snap: QuotaSnapshot, plan=None) -> None:
         plan_name = plan.name if plan is not None else ""
@@ -96,10 +107,18 @@ class QuotaTab(Vertical):
             for card in self._cards.values():
                 card.set_usage(None)
             return
+        names = [n for n in ALL_WINDOW_ORDER if n in snap.windows]
+        if names != list(self._cards):
+            self._rebuild_cards(names)
         for name, card in self._cards.items():
             card.set_usage(snap.windows.get(name), plan_name)
         fetched = snap.fetched_at.astimezone().strftime("%H:%M:%S")
+        source = getattr(plan, "data_source", "") or "官方用量端点"
         tag = f" · 套餐: {plan_name}" if plan_name else ""
+        stale = ""
+        age = datetime.now(timezone.utc) - snap.fetched_at
+        if age.total_seconds() > 900:
+            stale = "，数据有延迟（对应客户端运行时自动更新）"
         self._status.update(
-            Text(f"✅ 更新于 {fetched}（数据源: opencode.ai 官方用量端点{tag}）",
+            Text(f"✅ 更新于 {fetched}（数据源: {source}{tag}{stale}）",
                  style="dim"))

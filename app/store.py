@@ -62,6 +62,17 @@ def load_history(window: str, hours: float = 24.0,
     return [(r[0], r[1]) for r in rows]
 
 
+def history_windows(plan_id: str = "") -> list[str]:
+    """返回有快照记录的窗口名（按展示顺序排列）；plan_id 空则不过滤。"""
+    order = ["grant", "rolling", "weekly", "monthly"]
+    sql = "SELECT DISTINCT window FROM quota_snapshot" + (
+        " WHERE plan = ?" if plan_id else "")
+    with _connect() as conn:
+        rows = conn.execute(sql, (plan_id,) if plan_id else ()).fetchall()
+    names = [r[0] for r in rows]
+    return sorted(names, key=lambda n: order.index(n) if n in order else 99)
+
+
 def prune(keep_days: int = 30) -> None:
     """只保留最近 keep_days 天快照。"""
     cutoff = (datetime.now(timezone.utc).timestamp() - keep_days * 86400)

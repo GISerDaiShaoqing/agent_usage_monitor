@@ -18,6 +18,8 @@ MODELS_URL = "https://opencode.ai/zen/go/v1/models"
 WindowName = Literal["rolling", "weekly", "monthly"]
 WINDOW_LABELS: dict[str, str] = {"rolling": "5 小时", "weekly": "每周", "monthly": "每月"}
 WINDOW_ORDER: tuple[WindowName, ...] = ("rolling", "weekly", "monthly")
+# 展示顺序：grant 为 ZCode Start Plan 单池额度窗口，其余为 OpenCode Go 三窗口
+ALL_WINDOW_ORDER: tuple[str, ...] = ("grant", "rolling", "weekly", "monthly")
 
 
 @dataclass

@@ -1,4 +1,4 @@
-"""历史页：三窗口剩余% 快照 sparkline + 明细。"""
+"""历史页：各额度窗口剩余% 快照 sparkline + 明细（按当前套餐键控）。"""
 from __future__ import annotations
 
 from datetime import datetime
@@ -7,10 +7,12 @@ from rich.text import Text
 from textual.containers import VerticalScroll
 from textual.widgets import Static
 
+from .. import config as cfg_mod
 from .. import store
 
 SPARK_CHARS = "▁▂▃▄▅▆▇█"
-WINDOW_LABELS = {"rolling": "5 小时剩余%", "weekly": "每周剩余%",
+WINDOW_LABELS = {"grant": "Start Plan 剩余%",
+                 "rolling": "5 小时剩余%", "weekly": "每周剩余%",
                  "monthly": "每月剩余%"}
 
 
@@ -32,26 +34,37 @@ def sparkline(values: list[float], width: int = 60) -> Text:
 
 
 class HistoryTab(VerticalScroll):
+    def __init__(self, cfg_obj: cfg_mod.Config | None = None, **kwargs):
+        super().__init__(**kwargs)
+        self._cfg = cfg_obj
+
     def compose(self):
-        self._rolling = Static(id="hist-rolling")
-        self._weekly = Static(id="hist-weekly")
-        self._monthly = Static(id="hist-monthly")
+        self._rows: dict[str, Static] = {}
         self._detail = Static(id="hist-detail")
-        for w in (self._rolling, self._weekly, self._monthly, self._detail):
-            yield w
+        yield self._detail
 
     def refresh_data(self) -> None:
+        plan_id = self._cfg.active_plan if self._cfg is not None else ""
+        windows = store.history_windows(plan_id) or ["rolling", "weekly",
+                                                     "monthly"]
+        if list(self._rows) != windows:
+            for old in self._rows.values():
+                old.remove()
+            self._rows = {}
+            for name in windows:
+                w = Static(id=f"hist-{name}")
+                self._rows[name] = w
+                self.mount(w)
         lines: list[tuple[str, str]] = []
-        for name, widget in (("rolling", self._rolling),
-                             ("weekly", self._weekly),
-                             ("monthly", self._monthly)):
-            hist = store_load(name, hours=24.0)
+        for name, widget in self._rows.items():
+            hist = store_load(name, hours=24.0, plan_id=plan_id)
+            label = WINDOW_LABELS.get(name, name)
             widget.update(
-                Text(f"{WINDOW_LABELS[name]}（24h）\n", style="bold")
+                Text(f"{label}（24h）\n", style="bold")
                 + sparkline([v for _, v in hist]))
             if hist:
                 first_t, first_v = hist[0]
-                lines.append((WINDOW_LABELS[name],
+                lines.append((label,
                               f"{first_v:.0f}% → {hist[-1][1]:.0f}%"
                               f"（{len(hist)} 点，自 {fmt_time(first_t)}）"))
         detail = Text()
@@ -65,9 +78,9 @@ class HistoryTab(VerticalScroll):
         self._detail.update(detail)
 
 
-def store_load(window: str, hours: float):
+def store_load(window: str, hours: float, plan_id: str = ""):
     from .. import store
-    return store.load_history(window, hours)
+    return store.load_history(window, hours, plan_id=plan_id)
 
 
 def fmt_time(iso: str) -> str:

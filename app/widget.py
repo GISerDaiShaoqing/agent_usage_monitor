@@ -23,7 +23,7 @@ from PIL import Image, ImageTk
 from . import config as cfg
 from . import plans
 from .ui.quota_tab import fmt_countdown
-from .zen_client import QuotaSnapshot
+from .zen_client import ALL_WINDOW_ORDER, QuotaSnapshot
 
 APP_DIR = Path(__file__).resolve().parent.parent
 
@@ -202,12 +202,11 @@ class QuotaWidget:
             return
 
         y = 42
-        for name in ("rolling", "weekly", "monthly"):
+        for name in ALL_WINDOW_ORDER:
             usage = snap.windows.get(name)
             if usage is None:
                 continue
-            label = {"rolling": "5 小时", "weekly": "每周", "monthly": "每月"}[name]
-            c.create_text(12, y - 6, anchor="w", text=label,
+            c.create_text(12, y - 6, anchor="w", text=usage.label,
                           fill=COLOR_DIM, font=_font(9))
             bar_w = w - 100
             used = max(0.0, min(100.0, usage.used_percent))
@@ -227,8 +226,12 @@ class QuotaWidget:
             c.create_text(12, h - GRIP - 4, anchor="w", text=str(stats)[:44],
                           fill="#c9d1d9", font=_font(9))
         countdown = ""
-        if snap.windows.get("rolling") and snap.windows["rolling"].resets_at:
-            countdown = fmt_countdown(snap.windows["rolling"].resets_at)
+        for name in ALL_WINDOW_ORDER:
+            usage = snap.windows.get(name)
+            if usage is not None and usage.resets_at is not None:
+                verb = "到期" if name == "grant" else "重置"
+                countdown = fmt_countdown(usage.resets_at, verb=verb)
+                break
         if countdown:
             c.create_text(w - GRIP - 8, h - GRIP - 4, anchor="e",
                           text=countdown, fill="#8b949e",

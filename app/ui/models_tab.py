@@ -88,6 +88,11 @@ class ModelsTab(Vertical):
         zr = read_zcode_usage(since=since, provider_prefixes=prefixes,
                               pricing=self._pricing)
         or_ = read_opencode_usage(since=since, pricing=self._pricing)
+        if prefixes is not None:
+            # 切换套餐后 opencode 数据源也要按同一前缀过滤，
+            # 避免非当前套餐的模型混入统计
+            or_.rows = [r for r in or_.rows
+                        if any(r.provider.startswith(p) for p in prefixes)]
 
         self._rows = self._merge(zr, or_)
         self._warnings = zr.warnings + or_.warnings
