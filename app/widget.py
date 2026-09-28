@@ -210,7 +210,10 @@ class QuotaWidget:
                           fill=COLOR_DIM, font=_font(9))
             bar_w = w - 100
             used = max(0.0, min(100.0, usage.used_percent))
-            fill = (COLOR_WARN if (usage.is_limited or usage.is_low)
+            expired = (usage.resets_at is not None
+                       and usage.resets_at <= datetime.now(timezone.utc))
+            fill = (COLOR_DIM if expired
+                    else COLOR_WARN if (usage.is_limited or usage.is_low)
                     else COLOR_MID if usage.remaining_percent <= 40
                     else COLOR_OK)
             c.create_rectangle(56, y - 8, 56 + bar_w, y - 8 + BAR_H,

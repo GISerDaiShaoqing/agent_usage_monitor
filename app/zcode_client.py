@@ -197,7 +197,8 @@ def _fetch_quota_sync(api_key: str = "") -> QuotaSnapshot:
     return QuotaSnapshot(
         windows={}, fetched_at=datetime.now(timezone.utc),
         error="未找到 ZCode Start Plan 额度数据：ZCode 桌面端运行时会每 "
-              "~2 分钟自动拉取余额并写入本地日志，请先运行一次桌面端 ZCode")
+              "~2 分钟自动拉取余额并写入本地日志，请先运行一次桌面端 ZCode"
+              "（若套餐已到期，桌面端可能不再上报余额）")
 
 
 def _manual_override() -> str:

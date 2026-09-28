@@ -35,7 +35,17 @@ def fmt_countdown(resets_at: datetime | None, now: datetime | None = None,
     now = now or datetime.now(timezone.utc)
     delta = resets_at - now
     if delta.total_seconds() <= 0:
-        return f"即将{verb}"
+        ago = int(-delta.total_seconds())
+        days, rem = divmod(ago, 86400)
+        hours, rem = divmod(rem, 3600)
+        minutes = rem // 60
+        if days > 0:
+            return f"已{verb}（{days}天前）"
+        if hours > 0:
+            return f"已{verb}（{hours}小时前）"
+        if minutes > 0:
+            return f"已{verb}（{minutes}分钟前）"
+        return f"刚刚{verb}"
     total = int(delta.total_seconds())
     days, rem = divmod(total, 86400)
     hours, rem = divmod(rem, 3600)
@@ -54,7 +64,11 @@ class WindowCard(Static):
         if usage is None:
             self.update(Text("暂无数据", style="dim"))
             return
-        if usage.is_limited or usage.is_low:
+        expired = (usage.resets_at is not None
+                   and usage.resets_at <= datetime.now(timezone.utc))
+        if expired:
+            color, tag = "rgb(140,150,160)", ""
+        elif usage.is_limited or usage.is_low:
             color, tag = "red", " ⚠"
         elif usage.remaining_percent <= 40:
             color, tag = "yellow", ""

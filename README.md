@@ -138,6 +138,7 @@ run.bat / requirements.txt / README.md
 
 - **额度报 401**：key 失效，去 https://opencode.ai/auth 控制台获取新 key 填入 TUI 设置页
 - **Start Plan 额度显示"未找到数据"**：先运行一次 ZCode 桌面端（它会自动拉取余额并写入本地日志，约 2 分钟内本工具即可读到）；确认 `~/.zcode/v2/logs/` 下有当天日志
+- **Start Plan 已到期**：到期后额度卡会置灰并显示"已到期（X天前）"；若桌面端此后不再上报余额，该套餐会回到"未找到数据"状态，属正常现象
 - **模型页没数据**：确认 ZCode 的 `~/.zcode/cli/db/db.sqlite` 存在；检查 provider 过滤设置
 - **TUI 渲染乱码**：换 Windows Terminal 运行
 - **估算花费与官方不同**：单价表为近似值（部分取 cache_read=input×10% 近似），可在 `app/prices.json` 修正
