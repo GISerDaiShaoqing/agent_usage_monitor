@@ -223,11 +223,13 @@ class QuotaWidget:
             c.create_text(w - GRIP - 8, y - 3, anchor="e",
                           text=f"剩余 {usage.remaining_percent:.0f}%",
                           fill=fill, font=_font(9, True))
+            if usage.resets_at is not None:
+                verb = "到期" if name == "grant" else "重置"
+                c.create_text(12, y + 11, anchor="w",
+                              text=fmt_countdown(usage.resets_at, verb=verb),
+                              fill="#8b949e", font=_font(8))
             y += 34
 
-        if stats:
-            c.create_text(12, h - GRIP - 4, anchor="w", text=str(stats)[:44],
-                          fill="#c9d1d9", font=_font(9))
         countdown = ""
         for name in ALL_WINDOW_ORDER:
             usage = snap.windows.get(name)
@@ -235,6 +237,18 @@ class QuotaWidget:
                 verb = "到期" if name == "grant" else "重置"
                 countdown = fmt_countdown(usage.resets_at, verb=verb)
                 break
+        if stats:
+            import tkinter.font as tkfont
+            f9 = tkfont.Font(font=_font(9))
+            stats_text = str(stats)[:44]
+            avail = max(0, w - GRIP - 16)
+            while stats_text and f9.measure(stats_text + "…") > avail:
+                stats_text = stats_text[:-1]
+            if stats_text != str(stats)[:44]:
+                stats_text = stats_text.rstrip() + "…"
+            if stats_text:
+                c.create_text(12, h - GRIP - 26, anchor="w", text=stats_text,
+                              fill="#c9d1d9", font=_font(9))
         if countdown:
             c.create_text(w - GRIP - 8, h - GRIP - 4, anchor="e",
                           text=countdown, fill="#8b949e",
