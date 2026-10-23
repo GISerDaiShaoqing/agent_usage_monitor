@@ -18,8 +18,37 @@ MODELS_URL = "https://opencode.ai/zen/go/v1/models"
 WindowName = Literal["rolling", "weekly", "monthly"]
 WINDOW_LABELS: dict[str, str] = {"rolling": "5 小时", "weekly": "每周", "monthly": "每月"}
 WINDOW_ORDER: tuple[WindowName, ...] = ("rolling", "weekly", "monthly")
-# 展示顺序：grant 为 ZCode Start Plan 单池额度窗口，其余为 OpenCode Go 三窗口
+# 旧展示顺序常量（兼容保留）；新代码请用 ordered_windows()
 ALL_WINDOW_ORDER: tuple[str, ...] = ("grant", "rolling", "weekly", "monthly")
+
+
+def fmt_units(n: int | float) -> str:
+    """token 数精简展示：300000000 → 3亿，130000000 → 1.3亿，8500万 → 8500万。"""
+    n = int(n)
+    if n >= 100_000_000:
+        s = f"{n / 100_000_000:.2f}"
+        unit = "亿"
+    elif n >= 10_000:
+        s = f"{n / 10_000:.1f}"
+        unit = "万"
+    else:
+        return str(n)
+    return s.rstrip("0").rstrip(".") + unit
+
+
+def ordered_windows(windows: dict[str, WindowUsage]) -> list[WindowUsage]:
+    """展示顺序：grant（含 grant:xxx 分模型窗口）→ rolling/weekly/monthly → 其余。"""
+    idx = {n: i for i, n in enumerate(WINDOW_ORDER)}
+
+    def rank(item: tuple[str, WindowUsage]) -> tuple[int, object]:
+        name = item[0]
+        if name == "grant" or name.startswith("grant:"):
+            return (0, name)
+        if name in idx:
+            return (1, idx[name])
+        return (2, name)
+
+    return [w for _, w in sorted(windows.items(), key=rank)]
 
 
 @dataclass
@@ -29,6 +58,7 @@ class WindowUsage:
     status: str          # "ok" | "rate-limited" | 其他
     used_percent: float  # 已用 0-100
     resets_at: datetime | None
+    units_remaining: int | None = None  # token 池剩余绝对值（Start Plan 分模型窗口有值）
 
     @property
     def remaining_percent(self) -> float:

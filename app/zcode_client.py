@@ -9,8 +9,9 @@
    注意：该端点目前对非桌面端请求返回 3001，属尽力而为的备用路径。
 
 响应里 balances[] 含 total_units / used_units / remaining_units /
-expires_at，plans[] 含套餐名（如 "ZCode Weekend Build"）。Start Plan 是
-一次性发放的单池额度，聚合成单个 "grant" 窗口展示。
+expires_at，plans[] 含套餐名（如 "ZCode Weekend Build"）。单条余额聚合为
+单个 "grant" 窗口；多条（如 Start Plan 的 GLM-5.3 / GLM-5.3-Flash 两个
+独立 token 池）按模型分桶，逐条展示为 "grant:<model_id>" 窗口。
 """
 from __future__ import annotations
 
@@ -119,6 +120,61 @@ def _aggregate(data: dict) -> WindowUsage | None:
     )
 
 
+def _model_id_of(b: dict) -> str:
+    """从 capabilities 取 model: 前缀的模型 id（如 glm-5.3-flash）。"""
+    for cap in b.get("capabilities") or []:
+        if isinstance(cap, str) and cap.startswith("model:"):
+            return cap[len("model:"):]
+    return ""
+
+
+def _build_windows(data: dict) -> dict[str, WindowUsage]:
+    """balances[] → 窗口组（空 dict = 无有效余额）。
+
+    单条余额沿用原单池 grant 窗口（label 取套餐名）；多条 = 按模型
+    分桶逐条展示（grant:<model_id>），label 用 show_name（如
+    "GLM-5.3-Flash"），并携带剩余 token 绝对值供 UI 展示。
+    """
+    balances = [b for b in (data.get("balances") or [])
+                if isinstance(b, dict) and int(b.get("total_units") or 0) > 0]
+    if not balances:
+        return {}
+    if len(balances) == 1:
+        agg = _aggregate(data)
+        return {_GRANT: agg} if agg is not None else {}
+
+    def slug(text: str) -> str:
+        return re.sub(r"[^a-z0-9._-]+", "-", text.lower()).strip("-")
+
+    windows: dict[str, WindowUsage] = {}
+    for i, b in enumerate(balances):
+        total = int(b.get("total_units") or 0)
+        used = max(0, int(b.get("used_units") or 0))
+        expires = [int(b[k]) for k in ("expires_at", "period_end")
+                   if isinstance(b.get(k), (int, float)) and b[k] > 0]
+        remaining = b.get("remaining_units")
+        if not isinstance(remaining, (int, float)):
+            remaining = b.get("available_units")
+        model_id = _model_id_of(b)
+        name = (f"grant:{model_id}" if model_id
+                else f"grant:{slug(str(b.get('show_name') or '')) or i}")
+        if name in windows:            # 同模型多桶：追加序号避免覆盖
+            name = f"{name}-{i}"
+        label = (str(b.get("show_name") or "").strip()
+                 or model_id or f"额度 {i + 1}")
+        windows[name] = WindowUsage(
+            name=name,
+            label=label,
+            status="ok",
+            used_percent=used / total * 100.0,
+            resets_at=(datetime.fromtimestamp(min(expires), tz=timezone.utc)
+                       if expires else None),
+            units_remaining=(int(remaining)
+                             if isinstance(remaining, (int, float)) else None),
+        )
+    return windows
+
+
 # ---- 兜底：直接请求 balance API ----
 
 def discover_zcode_token() -> tuple[str, str]:
@@ -168,11 +224,11 @@ def _fetch_balance_api(token: str) -> QuotaSnapshot:
         data = resp.json().get("data") or {}
     except ValueError:
         return QuotaSnapshot(windows={}, fetched_at=now, error="响应格式无法解析")
-    usage = _aggregate(data)
-    if usage is None:
+    windows = _build_windows(data)
+    if not windows:
         return QuotaSnapshot(windows={}, fetched_at=now,
                              error="响应中没有有效的额度余额")
-    return QuotaSnapshot(windows={_GRANT: usage}, fetched_at=now)
+    return QuotaSnapshot(windows=windows, fetched_at=now)
 
 
 # ---- 对外接口（签名兼容 QUOTA_FETCHERS）----
@@ -181,9 +237,9 @@ def _fetch_quota_sync(api_key: str = "") -> QuotaSnapshot:
     parsed = parse_latest_balance_log()
     if parsed is not None:
         data, ts = parsed
-        usage = _aggregate(data)
-        if usage is not None:
-            return QuotaSnapshot(windows={_GRANT: usage}, fetched_at=ts)
+        windows = _build_windows(data)
+        if windows:
+            return QuotaSnapshot(windows=windows, fetched_at=ts)
 
     token, _src = discover_zcode_token()
     manual = _manual_override()
@@ -218,13 +274,19 @@ def test_connection() -> tuple[bool, str]:
     """设置页测试连接：返回 (成功?, 描述)。"""
     snap = _fetch_quota_sync()
     if snap.ok:
-        w = next(iter(snap.windows.values()))
-        used = w.used_percent
+        from .zen_client import fmt_units, ordered_windows
+        parts = []
+        for w in ordered_windows(snap.windows):
+            extra = (f"，剩 {fmt_units(w.units_remaining)}"
+                     if w.units_remaining is not None else "")
+            parts.append(f"{w.label} 已用 {w.used_percent:.1f}%{extra}")
+        resets = [w.resets_at for w in snap.windows.values()
+                  if w.resets_at is not None]
         total_hint = ""
-        if w.resets_at is not None:
+        if resets:
             from .ui.quota_tab import fmt_countdown
-            total_hint = f"，{fmt_countdown(w.resets_at, verb='到期')}"
-        return True, (f"连接成功：{w.label} 已用 {used:.1f}%"
-                      f"（数据时间 {snap.fetched_at.astimezone().strftime('%H:%M:%S')}）"
-                      f"{total_hint}")
+            total_hint = f"，{fmt_countdown(min(resets), verb='到期')}"
+        return True, ("连接成功：" + "；".join(parts)
+                      + f"（数据时间 {snap.fetched_at.astimezone().strftime('%H:%M:%S')}）"
+                      + total_hint)
     return False, snap.error or "未知错误"

@@ -9,6 +9,7 @@ from textual.widgets import Static
 
 from .. import config as cfg_mod
 from .. import store
+from .quota_tab import safe_widget_id
 
 SPARK_CHARS = "▁▂▃▄▅▆▇█"
 WINDOW_LABELS = {"grant": "Start Plan 剩余%",
@@ -52,13 +53,14 @@ class HistoryTab(VerticalScroll):
                 old.remove()
             self._rows = {}
             for name in windows:
-                w = Static(id=f"hist-{name}")
+                w = Static(id=f"hist-{safe_widget_id(name)}")
                 self._rows[name] = w
                 self.mount(w)
         lines: list[tuple[str, str]] = []
         for name, widget in self._rows.items():
             hist = store_load(name, hours=24.0, plan_id=plan_id)
-            label = WINDOW_LABELS.get(name, name)
+            label = (WINDOW_LABELS.get(name)
+                     or f"{name.split(':', 1)[-1]} 剩余%")
             widget.update(
                 Text(f"{label}（24h）\n", style="bold")
                 + sparkline([v for _, v in hist]))

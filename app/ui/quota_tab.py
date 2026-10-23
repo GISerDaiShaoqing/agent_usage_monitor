@@ -1,17 +1,23 @@
 """额度页：5小时 / 每周 / 每月 三窗口卡片。"""
 from __future__ import annotations
 
+import re
 from datetime import datetime, timezone
 
 from rich.text import Text
 from textual.containers import Horizontal, Vertical
 from textual.widgets import Static
 
-from ..zen_client import ALL_WINDOW_ORDER, QuotaSnapshot, WindowUsage
+from ..zen_client import QuotaSnapshot, WindowUsage, fmt_units, ordered_windows
 
 BAR_WIDTH = 24
 
 BLOCKS = "█▉▊▋▌▍▎▏"
+
+
+def safe_widget_id(name: str) -> str:
+    """窗口名 → Textual 合法控件 id（id 不允许冒号等字符，如 grant:glm-5.3）。"""
+    return re.sub(r"[^a-zA-Z0-9_-]+", "-", name)
 
 
 def render_bar(percent: float, width: int = BAR_WIDTH) -> Text:
@@ -75,13 +81,15 @@ class WindowCard(Static):
         else:
             color, tag = "green", ""
         lines = Text()
-        lines.append(f"{usage.label}额度{tag}\n", style=f"bold {color}")
+        lines.append(f"{usage.label} 额度{tag}\n", style=f"bold {color}")
         lines.append(render_bar(usage.used_percent))
         lines.append(f" {usage.used_percent:.0f}%\n", style=color)
         lines.append("剩余 ", style="dim")
         lines.append(f"{usage.remaining_percent:.0f}%", style=f"bold {color}")
+        if usage.units_remaining is not None:
+            lines.append(f"（{fmt_units(usage.units_remaining)}）", style="dim")
         lines.append("\n", style="default")
-        verb = "到期" if usage.name == "grant" else "重置"
+        verb = "到期" if usage.name.startswith("grant") else "重置"
         lines.append(fmt_countdown(usage.resets_at, verb=verb), style="dim")
         if usage.is_limited:
             lines.append("  已限流", style="bold red")
@@ -107,7 +115,7 @@ class QuotaTab(Vertical):
         container.remove_children()
         self._cards = {}
         for name in names:
-            card = WindowCard(id=f"card-{name}")
+            card = WindowCard(id=f"card-{safe_widget_id(name)}")
             self._cards[name] = card
             container.mount(card)
 
@@ -121,7 +129,7 @@ class QuotaTab(Vertical):
             for card in self._cards.values():
                 card.set_usage(None)
             return
-        names = [n for n in ALL_WINDOW_ORDER if n in snap.windows]
+        names = [u.name for u in ordered_windows(snap.windows)]
         if names != list(self._cards):
             self._rebuild_cards(names)
         for name, card in self._cards.items():

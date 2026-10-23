@@ -23,11 +23,11 @@ from PIL import Image, ImageTk
 from . import config as cfg
 from . import plans
 from .ui.quota_tab import fmt_countdown
-from .zen_client import ALL_WINDOW_ORDER, QuotaSnapshot
+from .zen_client import QuotaSnapshot, WindowUsage, fmt_units, ordered_windows
 
 APP_DIR = Path(__file__).resolve().parent.parent
 
-MIN_W, MIN_H = 280, 170
+MIN_W, MIN_H = 280, 200   # 高度下限保证 3 窗口 + 底部信息行在 DPI 缩放下不挤压
 MAX_W, MAX_H = 900, 700
 GRIP = 16          # 右下角缩放手柄尺寸(px)
 BAR_H = 10
@@ -177,17 +177,50 @@ class QuotaWidget:
         self.root.after(60000, self._tick_60s)
 
     # ---- 绘制 ----
+    @staticmethod
+    def _row_color(usage: WindowUsage) -> str:
+        expired = (usage.resets_at is not None
+                   and usage.resets_at <= datetime.now(timezone.utc))
+        if expired:
+            return COLOR_DIM
+        if usage.is_limited or usage.is_low:
+            return COLOR_WARN
+        if usage.remaining_percent <= 40:
+            return COLOR_MID
+        return COLOR_OK
+
+    def _draw_box(self, w: int, bottom: int) -> None:
+        """换肤时内容区的边框，底边随行数自适应。"""
+        if self._bg_image is not None:
+            self.canvas.create_rectangle(0, 28, w, max(bottom, 100),
+                                         fill="", outline="#444c56")
+
     def _draw(self) -> None:
+        import tkinter.font as tkfont
         c = self.canvas
         w, h = self._w, self._h
         c.delete("all")
         self._draw_bg(w, h)
 
-        # 标题行
-        c.create_text(12, 14, anchor="w", text=f"{self.plan.name}",
+        # 字体行高按当前 DPI 实测，布局随系统缩放自适应
+        f_title = tkfont.Font(font=_font(11, True))
+        f_lab = tkfont.Font(font=_font(9))
+        f_small = tkfont.Font(font=_font(8))
+        ls_title = f_title.metrics("linespace")
+        ls9 = f_lab.metrics("linespace")
+        right_x = w - GRIP - 8
+
+        # 标题行：左套餐名（超宽截断避免与右侧相撞）+ 右更新时间
+        updated = f"更新于 {datetime.now().strftime('%H:%M')}"
+        title = self.plan.name
+        avail = w - GRIP - 10 - 12 - f_small.measure(updated) - 12
+        while title and f_title.measure(title + "…") > avail:
+            title = title[:-1]
+        if title != self.plan.name and title:
+            title += "…"
+        c.create_text(12, 14, anchor="w", text=title,
                       fill=COLOR_FG, font=_font(11, True))
-        updated = datetime.now().strftime("%H:%M")
-        c.create_text(w - GRIP - 10, 14, anchor="e", text=f"更新于 {updated}",
+        c.create_text(w - GRIP - 10, 14, anchor="e", text=updated,
                       fill=COLOR_DIM, font=_font(8))
 
         snap = self._data[0] if self._data else None
@@ -198,60 +231,75 @@ class QuotaWidget:
             msg = (err or (snap.error if snap else "加载中…"))
             c.create_text(w // 2, h // 2 - 8, text=str(msg)[:46],
                           fill=COLOR_WARN, font=_font(9))
+            self._draw_box(w, 132)
             self._draw_grip(w, h)
             return
 
-        y = 42
-        for name in ALL_WINDOW_ORDER:
-            usage = snap.windows.get(name)
-            if usage is None:
-                continue
-            c.create_text(12, y - 6, anchor="w", text=usage.label,
+        # 额度行：第一行 label + 剩余%（含 token 余量），第二行进度条 +
+        # 行内倒计时。标签与进度条分层，长标签不再被条形盖住。
+        f_bold = tkfont.Font(font=_font(9, True))
+        y = 14 + ls_title // 2 + 16
+        last_bar_bottom = y
+        for usage in ordered_windows(snap.windows):
+            color = self._row_color(usage)
+            right = f"剩余 {usage.remaining_percent:.0f}%"
+            if usage.units_remaining is not None:
+                right += f"（{fmt_units(usage.units_remaining)}）"
+            right_w = f_bold.measure(right)
+            label = usage.label
+            avail = right_x - 12 - right_w - 10
+            while label and f_lab.measure(label + "…") > avail:
+                label = label[:-1]
+            if label != usage.label and label:
+                label += "…"
+            c.create_text(12, y, anchor="w", text=label,
                           fill=COLOR_DIM, font=_font(9))
-            bar_w = w - 100
-            used = max(0.0, min(100.0, usage.used_percent))
-            expired = (usage.resets_at is not None
-                       and usage.resets_at <= datetime.now(timezone.utc))
-            fill = (COLOR_DIM if expired
-                    else COLOR_WARN if (usage.is_limited or usage.is_low)
-                    else COLOR_MID if usage.remaining_percent <= 40
-                    else COLOR_OK)
-            c.create_rectangle(56, y - 8, 56 + bar_w, y - 8 + BAR_H,
-                               outline="#444c56", fill="#21262b")
-            c.create_rectangle(56, y - 8, 56 + int(bar_w * used / 100),
-                               y - 8 + BAR_H, width=0, fill=fill)
-            c.create_text(w - GRIP - 8, y - 3, anchor="e",
-                          text=f"剩余 {usage.remaining_percent:.0f}%",
-                          fill=fill, font=_font(9, True))
+            c.create_text(right_x, y, anchor="e", text=right,
+                          fill=color, font=_font(9, True))
+
+            countdown = ""
             if usage.resets_at is not None:
-                verb = "到期" if name == "grant" else "重置"
-                c.create_text(12, y + 11, anchor="w",
-                              text=fmt_countdown(usage.resets_at, verb=verb),
-                              fill="#8b949e", font=_font(8))
-            y += 34
+                verb = "到期" if usage.name.startswith("grant") else "重置"
+                countdown = fmt_countdown(usage.resets_at, verb=verb)
+            bar_w = max(40, right_x - 12
+                        - (f_small.measure(countdown) + 10
+                           if countdown else 0))
+            bar_top = y + ls9 // 2 + 8
+            used = max(0.0, min(100.0, usage.used_percent))
+            c.create_rectangle(12, bar_top, 12 + bar_w, bar_top + BAR_H,
+                               outline="#444c56", fill="#21262b")
+            c.create_rectangle(12, bar_top, 12 + int(bar_w * used / 100),
+                               bar_top + BAR_H, width=0, fill=color)
+            if countdown:
+                c.create_text(right_x, bar_top + BAR_H // 2, anchor="e",
+                              text=countdown, fill="#8b949e", font=_font(8))
+            y = bar_top + BAR_H + 10 + ls9 // 2
+            last_bar_bottom = bar_top + BAR_H
+
+        # 底部信息栏：优先锚定在右下角，内容挤不下时跟随最后一行下移
+        stats_y = max(h - GRIP - 26, last_bar_bottom + 16)
+        if self._bg_image is not None and last_bar_bottom + 6 <= stats_y - 8:
+            self._draw_box(w, last_bar_bottom + 6)
 
         countdown = ""
-        for name in ALL_WINDOW_ORDER:
-            usage = snap.windows.get(name)
-            if usage is not None and usage.resets_at is not None:
-                verb = "到期" if name == "grant" else "重置"
+        for usage in ordered_windows(snap.windows):
+            if usage.resets_at is not None:
+                verb = "到期" if usage.name.startswith("grant") else "重置"
                 countdown = fmt_countdown(usage.resets_at, verb=verb)
                 break
         if stats:
-            import tkinter.font as tkfont
-            f9 = tkfont.Font(font=_font(9))
             stats_text = str(stats)[:44]
             avail = max(0, w - GRIP - 16)
-            while stats_text and f9.measure(stats_text + "…") > avail:
+            while stats_text and f_lab.measure(stats_text + "…") > avail:
                 stats_text = stats_text[:-1]
             if stats_text != str(stats)[:44]:
                 stats_text = stats_text.rstrip() + "…"
             if stats_text:
-                c.create_text(12, h - GRIP - 26, anchor="w", text=stats_text,
+                c.create_text(12, stats_y, anchor="w", text=stats_text,
                               fill="#c9d1d9", font=_font(9))
         if countdown:
-            c.create_text(w - GRIP - 8, h - GRIP - 4, anchor="e",
-                          text=countdown, fill="#8b949e",
+            c.create_text(w - GRIP - 8, max(h - GRIP - 4, stats_y + 20),
+                          anchor="e", text=countdown, fill="#8b949e",
                           font=_font(8))
         self._draw_grip(w, h)
 
@@ -274,7 +322,6 @@ class QuotaWidget:
             img = Image.blend(Image.new("RGB", img.size, (0, 0, 0)), img, 1.0 - dim)
         self._bg_image = ImageTk.PhotoImage(img)
         self.canvas.create_image(0, 0, image=self._bg_image, anchor="nw")
-        self.canvas.create_rectangle(0, 28, w, 132, fill="", outline="#444c56")
 
     def _draw_grip(self, w: int, h: int) -> None:
         """右下角缩放手柄（三道斜线）。"""

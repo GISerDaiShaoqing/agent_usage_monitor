@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from .config import STORE_PATH
-from .zen_client import QuotaSnapshot
+from .zen_client import WINDOW_ORDER, QuotaSnapshot
 
 
 def _connect() -> sqlite3.Connection:
@@ -63,14 +63,20 @@ def load_history(window: str, hours: float = 24.0,
 
 
 def history_windows(plan_id: str = "") -> list[str]:
-    """返回有快照记录的窗口名（按展示顺序排列）；plan_id 空则不过滤。"""
-    order = ["grant", "rolling", "weekly", "monthly"]
+    """返回有快照记录的窗口名（grant* 在前，其余按 rolling/weekly/monthly）。"""
+    def rank(n: str) -> tuple[int, object]:
+        if n == "grant" or n.startswith("grant:"):
+            return (0, n)
+        if n in WINDOW_ORDER:
+            return (1, WINDOW_ORDER.index(n))
+        return (2, n)
+
     sql = "SELECT DISTINCT window FROM quota_snapshot" + (
         " WHERE plan = ?" if plan_id else "")
     with _connect() as conn:
         rows = conn.execute(sql, (plan_id,) if plan_id else ()).fetchall()
     names = [r[0] for r in rows]
-    return sorted(names, key=lambda n: order.index(n) if n in order else 99)
+    return sorted(names, key=rank)
 
 
 def prune(keep_days: int = 30) -> None:
