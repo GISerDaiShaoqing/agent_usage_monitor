@@ -45,7 +45,7 @@ python -X utf8 -m app.main
 - **右下角拖拽**：调整大小（280×200 起，松开自动保存到 config.json）
 - **右键菜单**：刷新 / 切换套餐 / 打开 TUI 仪表盘 / 置顶 / 退出
 - **显示内容**：每条额度两行——上行是名称 + 剩余 %（Start Plan 分模型窗口还带剩余 token 数，如 `剩余 100%（3亿）`），下行是进度条 + 行内灰色**重置倒计时**（grant 额度显示"到期"）；剩余 ≤15% 或已限流时条形变红，已过期置灰。Start Plan 的多模型额度按模型逐条分行显示（如 GLM-5.3 / GLM-5.3-Flash 各一行）
-- **底部信息栏**：左侧为 7 天用量摘要（如 `glm-5.3 123 次 +2 模型（7天）`——次数为各模型请求数之和，只见用量最大那个模型名，其余模型计入 `+N 模型`，逐个明细看 TUI 模型页；超宽自动截断省略），右下角为最紧急窗口的重置倒计时
+- **底部信息栏**：左侧为 7 天用量摘要（如 `glm-5.3 123 次 +2 模型（7天）`——次数为各模型请求数之和，只见用量最大那个模型名，其余模型计入 `+N 模型`，逐个明细看 TUI 模型页；超宽自动截断省略；套餐为 opencode-go 时把 Codex 的调用一并计入），右下角为最紧急窗口的重置倒计时
 - 文字尺寸按系统 DPI 缩放自适应排版（高缩放比例下三窗口套餐建议把窗口拉高一些）
 - 60 秒自动刷新；异常会写入 `data/widget_error.log`
 
@@ -62,7 +62,7 @@ python -X utf8 -m app.main
 | `q` | 退出 |
 
 - **额度页**：每窗口一张卡片（进度条 + 已用/剩余百分比 + 重置倒计时）；Start Plan 的多模型 token 池各显示一张卡片并附剩余 token 数（如"剩 3亿"）；剩余 ≤15% 或已限流时红色警示
-- **模型页**：模型 × 请求数 / 输入 / 缓存读 / 缓存写 / 输出 / 推理 tokens / 估算花费（USD，无单价表价目的模型显示 `—`）
+- **模型页**：模型 × 请求数 / 输入 / 缓存读 / 缓存写 / 输出 / 推理 tokens / 估算花费（USD，无单价表价目的模型显示 `—`）。**Codex CLI / 桌面端的调用也计入**（`gpt-6-luna ·codex` 这样带来源标记），默认 opencode-go 套餐下自动纳入；其余套餐下需 provider 过滤显式匹配（数据源为 `~/.codex/sessions` 的本地 rollout 记录）
 - **历史页**：剩余 % 随时间 sparkline（App 运行期间按轮询周期记录）
 
 ## 平台支持
@@ -99,7 +99,7 @@ Start Plan 不是"5 小时/周/月"三窗口，而是**一次性发放的 token 
 
 1. **三窗口额度**：`GET https://opencode.ai/zen/go/v1/usage`（官方用法，`Authorization: Bearer <key>`），60 秒轮询。`percent` 为官方返回的已用比例。
 2. **Start Plan 额度**：见上一节（ZCode 本地日志解析为主）。
-3. **分模型统计**：只读解析本机 ZCode 数据库 `~/.zcode/cli/db/db.sqlite` 的 `model_usage` 表（每次请求一行），以及 OpenCode CLI 的 `~/.local/share/opencode/opencode.db`（`session_message` 表）。
+3. **分模型统计**：只读解析本机 ZCode 数据库 `~/.zcode/cli/db/db.sqlite` 的 `model_usage` 表（每次请求一行）、OpenCode CLI 的 `~/.local/share/opencode/opencode.db`（`session_message` 表），以及 Codex CLI 的 `~/.codex/sessions/**/rollout-*.jsonl`（`token_usage_record` 每请求一条；老版本回退到 `token_count` 事件做差，模型取最近的 `turn_context`）。
 4. **API key 自动发现**（设置页可覆盖）：环境变量 `OPENCODE_GO_API_KEY` → ZCode `~/.zcode/v2/provider_config.json`（`opencode-go-*` provider）→ OpenCode `auth.json`。
 
 默认只统计 **OpenCode Go 相关 provider**（自动发现：`opencode-go-chat/messages/responses` + `v2/config.json` 中 baseURL 指向 `opencode.ai/zen/go` 的自定义 provider）。设置页 provider 过滤填 `*` 可计入全部（含智谱/Z.ai 自家套餐的调用）。
@@ -132,7 +132,7 @@ app/
   pricing.py     # 单价表（app/prices.json 可覆盖内置价格）
   plans.py       # 订阅套餐注册表（扩展新套餐的接入点）
   store.py       # 额度快照 SQLite（唯一写入点）
-  readers/       # 只读解析 zcode db.sqlite / opencode.db
+  readers/       # 只读解析 zcode db.sqlite / opencode.db / codex rollout 列表
   ui/            # TUI 四个标签页
 run.bat / requirements.txt / README.md
 ```

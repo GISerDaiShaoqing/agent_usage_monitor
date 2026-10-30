@@ -142,10 +142,18 @@ class QuotaWidget:
                 provider_prefixes=plans.plan_provider_prefixes(self.plan.id))
         except Exception:
             return ""
-        if not rep.rows:
+        rows = rep.rows
+        if self.plan.id == "opencode-go":
+            # Codex 调用同样走 OpenCode Go 套餐，纳入摘要（ZCode 库看不到）
+            try:
+                from .readers.codex_reader import read_codex_usage
+                rows = rows + read_codex_usage(since=since).rows
+            except Exception:
+                pass
+        if not rows:
             return "7 天暂无用量"
-        rows = sorted(rep.rows, key=lambda r: r.processed, reverse=True)
-        total_req = sum(r.requests for r in rep.rows)
+        rows = sorted(rows, key=lambda r: r.processed, reverse=True)
+        total_req = sum(r.requests for r in rows)
         top = rows[0]
         extra = f" +{len(rows) - 1} 模型" if len(rows) > 1 else ""
         return f"{top.model} {total_req} 次{extra}（7天）"

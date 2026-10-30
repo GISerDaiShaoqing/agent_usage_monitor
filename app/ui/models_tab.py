@@ -75,6 +75,7 @@ class ModelsTab(Vertical):
     def _load_and_render(self) -> None:
         from ..readers.zcode_reader import read_zcode_usage
         from ..readers.opencode_reader import read_opencode_usage
+        from ..readers.codex_reader import read_codex_usage
         from .. import plans as plans_mod
 
         since = self._since()
@@ -94,8 +95,26 @@ class ModelsTab(Vertical):
             or_.rows = [r for r in or_.rows
                         if any(r.provider.startswith(p) for p in prefixes)]
 
-        self._rows = self._merge(zr, or_)
+        # Codex 自带本地 rollout 记录，ZCode/OpenCode 的库看不到它的调用。
+        # 默认（按套餐）模式下仅 opencode-go 套餐纳入——Codex 侧配置的
+        # 就是该套餐的自定义 provider，调用都走它；用户显式过滤器则
+        # 与其他数据源同一规则
+        cr = read_codex_usage(since=since)
+        if flt:
+            if prefixes is not None:
+                cr.rows = [r for r in cr.rows
+                           if any(r.provider.startswith(p) for p in prefixes)]
+        elif self._cfg.active_plan == "opencode-go":
+            pass
+        else:
+            cr.rows = []
+        reports = [zr, or_]
+        if cr.rows:
+            reports.append(cr)
+        self._rows = self._merge(*reports)
         self._warnings = zr.warnings + or_.warnings
+        if flt or self._cfg.active_plan == "opencode-go" or cr.rows:
+            self._warnings += cr.warnings
         self._render_table()
 
     def _merge(self, *reports: UsageReport) -> list[ModelUsageRow]:
@@ -135,6 +154,8 @@ class ModelsTab(Vertical):
             bar = Text("█" * bar_len + "░" * (BAR_WIDTH - bar_len))
             bar.style = "cyan"
             model_text = Text(r.model)
+            if r.provider == "codex":
+                model_text.append(" ·codex", style="dim")
             if r.errors:
                 model_text.append(f" ({r.errors} err)", style="red")
             table.add_row(

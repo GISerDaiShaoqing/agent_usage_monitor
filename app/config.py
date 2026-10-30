@@ -28,6 +28,11 @@ OPENCODE_DB_CANDIDATES = [
     USER_HOME / ".local" / "share" / "opencode" / "opencode.db",
     (os_appdata) / "opencode" / "opencode.db",
 ]
+# Codex CLI / 桌面端的 rollout 会话目录（JSONL）。WSL 内安装的 Codex 不在
+# Windows 用户目录下，不可见（与 ZCode/OpenCode 的跨端边界一致）。
+CODEX_SESSION_CANDIDATES = [
+    USER_HOME / ".codex" / "sessions",
+]
 
 
 @dataclass
