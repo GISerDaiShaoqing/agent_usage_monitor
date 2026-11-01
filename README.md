@@ -143,7 +143,8 @@ run.bat / requirements.txt / README.md
 - **Start Plan 额度显示"未找到数据"**：先运行一次 ZCode 桌面端（它会自动拉取余额并写入本地日志，约 2 分钟内本工具即可读到）；确认 `~/.zcode/v2/logs/` 下有当天日志
 - **Start Plan 已到期**：到期后额度卡会置灰并显示"已到期（X天前）"；若桌面端此后不再上报余额，该套餐会回到"未找到数据"状态，属正常现象
 - **模型页没数据**：确认 ZCode 的 `~/.zcode/cli/db/db.sqlite` 存在；检查 provider 过滤设置
+- **模型页没有 Codex 行**：确认 `~/.codex/sessions/` 下有 rollout 会话文件（用过一次 Codex 就有）；确认当前套餐为 opencode-go 或 provider 过滤能匹配（Codex 行带 `·codex` 标记）
 - **TUI 渲染乱码**：换 Windows Terminal 运行
-- **估算花费与官方不同**：单价表为近似值（部分取 cache_read=input×10% 近似），可在 `app/prices.json` 修正
+- **估算花费与官方不同**：单价取自 OpenCode Go 官方文档（`app/pricing.py` 内置，核对于 2026-10-30）；分档模型按低档价、DeepSeek 按谷段价估算，官方价目变动时可在 `app/prices.json` 覆盖修正
 - **小部件没弹出来**：看 `data/widget_error.log`
 - **Python 未被找到**：`run.bat` 顶部设 `PYTHON_PATH` 指向你的 python.exe
