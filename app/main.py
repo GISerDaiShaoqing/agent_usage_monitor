@@ -20,7 +20,7 @@ from .ui.settings_tab import SettingsTab
 
 
 class OCGoQuotaApp(App):
-    TITLE = "OpenCode Go 额度追踪"
+    TITLE = "DaiPulse Dashboard"
     SUB_TITLE = "5小时 / 周 / 月额度 · 分模型 token 统计"
 
     CSS = """

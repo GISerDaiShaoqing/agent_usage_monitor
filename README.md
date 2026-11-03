@@ -1,6 +1,13 @@
-# OpenCode Go 额度追踪
+# daipulse_sqdai — AI 编码订阅额度脉搏
 
-桌面悬浮小部件（主入口）+ 终端 TUI 仪表盘，查看 **OpenCode Go** 订阅的 5 小时 / 每周 / 每月额度、**ZCode Start Plan**（免费领取的 token）的总额度与到期时间，以及两者的**分模型 token 使用统计**。纯只读、零侵入：不改变任何现有配置，不要求 cookie，唯一写入的是本目录下的 `data/snapshots.db`（额度历史快照）与自身 `config.json`。
+**DaiPulse** 为 AI 编码订阅做"脉搏监护"，当前覆盖：
+
+- **OpenCode Go**：5 小时 / 每周 / 每月三窗口额度（官方 /usage 端点，60s 轮询）
+- **ZCode Start Plan**（免费领取的 token）：GLM-5.3 / GLM-5.3-Flash 两个 token 池各自的额度与到期
+- 分模型 token 使用统计（ZCode + OpenCode + Codex 三个本地数据源）
+- 预留槽位：智谱 GLM Coding Plan / Z.ai / Kimi 的额度接口待接入，模型页用量已可追踪
+
+纯只读、零侵入：不改变任何现有配置，不要求 cookie，唯一写入的是本目录下的 `data/snapshots.db`（额度历史快照）与自身 `config.json`。名字：**Dai = D + AI**（作者 sqdai），Pulse = 额度池的"脉象"，低额度即"心跳报警"（托盘图标绿/黄/红随最紧急窗口变色）。
 
 ---
 
@@ -18,10 +25,45 @@
 
 ---
 
-## 快速开始
+## 安装与运行
+
+### 0. 前提：本机需要一个可用的 Python
+
+本工具是**纯脚本形态**（暂无免安装 exe，打包属搁置备忘），需要 CPython ≥ 3.10（本项目在 3.12 上开发实测）。安装其一即可：
+
+- **Windows**：[python.org](https://www.python.org/downloads/) 安装包或 Miniconda/Anaconda。
+  ⚠️ Microsoft Store 的 "python" 是跳转安装页的占位程序，启动脚本已自动跳过；
+  若你装的是 conda 且不在默认路径，用下文的 `PYTHON_PATH` 指定解释器。
+- **Linux / macOS**：发行版 `python3` 或 conda。Linux 上**小部件需要 tkinter**
+  （Debian/Ubuntu: `sudo apt install python3-tk`；Fedora: `sudo dnf install python3-tkinter`；conda 自带 `tk`）。
+
+第三方依赖只有 `textual`（TUI）、`httpx`（API 请求）、`Pillow`（图片皮肤），见 `requirements.txt`——安装一次即可。
+
+### 1. 获取代码
+
+```bash
+git clone <本仓库地址> opencodego_usage_monitor
+cd opencodego_usage_monitor
+```
+
+### 2. 一键环境安装（可选，全新机器）
 
 ```bat
-:: Windows
+:: Windows——双击执行；没有可用 Python 时自动 winget 安装官方 CPython 3.12，再装依赖
+install.bat
+```
+```bash
+# Linux / macOS——自检 python3 / tkinter，缺失时直接打印对应发行版的安装命令
+./install.sh
+```
+
+装完即"环境就绪"，接下来按 §3 启动。注意：Windows 上的 Git Bash 用户请用 `install.bat`
+（Git Bash 的 PATH 里通常没有 conda Python，`install.sh` 会正确提示你回 bat）。
+
+### 3. 启动（解释器探测与装依赖全自动）
+
+```bat
+:: Windows——双击或命令行执行
 run.bat
 ```
 ```bash
@@ -29,21 +71,49 @@ run.bat
 ./run.sh
 ```
 
-启动**桌面悬浮小部件**（唯一入口；Windows 用 `pythonw` 静默启动，cmd 窗口一闪即关；Linux/macOS 用 nohup 后台运行）。在**小部件右键菜单**里可以打开 **TUI 仪表盘**（新开一个终端窗口），或手动运行：
+启动脚本会依次完成：
+
+1. **找解释器**：Windows 按 `PYTHON_PATH` 手动指定 → `where python`（跳过 WindowsApps 占位符）→ `~/.conda/environments.txt` 里的 conda 环境 → 常见 conda 安装位置；Linux/macOS 按 `PYTHON_PATH` → `python3` → `python`。
+2. **核对环境**：Linux 先验证 tkinter，缺了会直接给出对应发行版的安装命令。
+3. **装依赖**：`python -c "import textual, httpx, PIL"` 失败时自动执行
+   `pip install -r requirements.txt`（首次运行约需一两分钟，之后再启动即瞬间跳过）。
+4. **后台运行**：Windows 用 `pythonw` 启动小部件（无残留控制台窗口）；
+   Linux/macOS 用 `nohup` 脱离终端（关闭终端它也活着）。
+
+在**小部件右键菜单**里可打开 **TUI 仪表盘**（新开一个终端窗口）。
+
+### 4. 手动部署（可选：venv 隔离环境）
+
+不自动用脚本、或想用干净环境时：
 
 ```bash
-python -X utf8 -m app.main
+python -m venv .venv
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+python -X utf8 -m app.widget     # 小部件前台运行（调试看实时输出）
+python -X utf8 -m app.main       # TUI 仪表盘
 ```
 
-（启动脚本自动检测 Python：Windows 下 PATH → conda 环境（读 `~/.conda/environments.txt`）→ 常见安装位置；Linux/macOS 用 `python3`；也可用 `PYTHON_PATH` 环境变量指定。缺依赖会自动安装。TUI 必须用 `-m` 模块方式启动，建议在 Windows Terminal 里运行。）
+> Debian/Ubuntu 的**系统 Python** 默认在 PEP 668 保护下，直接 `pip install` 会报
+> `externally-managed-environment`——此时 `run.sh` 的自动装依赖也会失败，
+> 按上表建 venv 手动装好后再运行脚本（此时依赖已满足，脚本会直接启动）。
+
+### 5. 首次运行之后
+
+- `config.json` 首次启动自动生成（完整字段含义见下文"配置"节）；
+- API key 自动发现：装了 ZCode / OpenCode 并登录过即可自动读到，无需手动填；
+  手动配置见"数据来源"节的 key 发现链（环境变量 → ZCode 配置 → OpenCode auth.json）。
+- 60 秒轮询即刻开始；想换套餐用小部件右键"TUI 仪表盘/切换套餐"。
 
 ## 桌面小部件
 
 无边框悬浮窗，默认置顶半透明：
 
+- **标题行**：`DaiPulse · 当前套餐名`（产品名 11pt 加粗、套餐名 8pt 加粗白色小一号，中间 3px 小圆点分隔；切套餐自动跟随；窗口过窄时套餐名截断或隐去）+ 右侧"更新 HH:MM"
 - **左键拖动**：移动位置
 - **右下角拖拽**：调整大小（280×200 起，松开自动保存到 config.json）
-- **右键菜单**：刷新 / 切换套餐 / 打开 TUI 仪表盘 / 置顶 / 退出
+- **右键菜单**：刷新 / 切换套餐 / 打开 TUI 仪表盘 / 置顶 / 隐藏 / 退出
+- **隐藏与托盘**（仅 Windows）：右键"隐藏"把部件收起（隐藏期间额度轮询照常），系统托盘常驻小图标（**绿/黄/红圆点 + 白色心率线**）——左键点击显示/隐藏切换，右键弹出部件同款菜单；图标颜色即最紧急窗口的状态（绿正常 / 黄 ≤40% / 红 ≤15% 或限流 / 灰无数据），悬停 tooltip 显示"剩 X%（窗口名）"；退出时图标自动移除
 - **显示内容**：每条额度两行——上行是名称 + 剩余 %（Start Plan 分模型窗口还带剩余 token 数，如 `剩余 100%（3亿）`），下行是进度条 + 行内灰色**重置倒计时**（grant 额度显示"到期"）；剩余 ≤15% 或已限流时条形变红，已过期置灰。Start Plan 的多模型额度按模型逐条分行显示（如 GLM-5.3 / GLM-5.3-Flash 各一行）
 - **底部信息栏**：左侧为 7 天用量摘要（如 `glm-5.3 123 次 +2 模型（7天）`——次数为各模型请求数之和，只见用量最大那个模型名，其余模型计入 `+N 模型`，逐个明细看 TUI 模型页；超宽自动截断省略；套餐为 opencode-go 时把 Codex 的调用一并计入），右下角为最紧急窗口的重置倒计时
 - 文字尺寸按系统 DPI 缩放自适应排版（高缩放比例下三窗口套餐建议把窗口拉高一些）
@@ -69,11 +139,11 @@ python -X utf8 -m app.main
 
 | 平台 | 状态 | 启动 | 说明 |
 |---|---|---|---|
-| **Windows** | ✅ 完整 | 双击 `run.bat` | pythonw 静默启动、置顶无边框、「打开 TUI」新开控制台窗口 |
-| **Linux** | ✅ 可用（X11） | `./run.sh` | 需 `python3-tk`（Debian: `sudo apt install python3-tk`；conda 自带）；「打开 TUI」自动探测 gnome-terminal/konsole/xterm 等；**Wayland 下置顶/无边框受合成器限制可能无效** |
-| **macOS** | ✅ 可用 | `./run.sh` | conda 自带 tkinter；无边框窗口不接受键盘输入（仅鼠标操作，不影响使用）；Dock 会显示 Python 图标；「打开 TUI」通过 Terminal.app |
+| **Windows** | ✅ 完整 | 双击 `run.bat` | pythonw 静默启动、置顶无边框、「打开 TUI」新开控制台窗口；**托盘隐藏/召回**（右下角状态圆点 + 左键呼出） |
+| **Linux** | ✅ 可用（X11） | `./run.sh` | 需 `python3-tk`（Debian: `sudo apt install python3-tk`；conda 自带）；「打开 TUI」自动探测 gnome-terminal/konsole/xterm 等；**Wayland 下置顶/无边框受合成器限制可能无效**；隐藏/托盘不可用（右键菜单「隐藏」保持禁用，一切功能照常） |
+| **macOS** | ✅ 可用 | `./run.sh` | conda 自带 tkinter；无边框窗口不接受键盘输入（仅鼠标操作，不影响使用）；Dock 会显示 Python 图标；「打开 TUI」通过 Terminal.app；隐藏/托盘不可用（右键菜单「隐藏」保持禁用，一切功能照常） |
 
-数据层（额度端点、本地用量解析、SQLite）三平台行为一致：ZCode `~/.zcode/cli/db/db.sqlite` 与 OpenCode `~/.local/share/opencode/opencode.db` 均为 XDG 标准路径。Windows 专属代码（DPI、新控制台）都有平台分支或异常保护，不影响其它平台。
+数据层（额度端点、本地用量解析、SQLite）三平台行为一致：ZCode `~/.zcode/cli/db/db.sqlite` 与 OpenCode `~/.local/share/opencode/opencode.db` 均为 XDG 标准路径。Windows 专属代码（DPI、新控制台、系统托盘）都有平台分支或异常保护，不影响其它平台。
 
 ## 订阅套餐切换
 
@@ -129,12 +199,13 @@ app/
   config.py      # 配置 + key/provider 自动发现
   zen_client.py  # OpenCode Go 官方 /usage 端点客户端
   zcode_client.py# ZCode Start Plan 额度（本地日志解析 + 余额接口兜底）
+  tray.py        # Windows 托盘图标（隐藏召回 + 额度状态心率圆点）
   pricing.py     # 单价表（app/prices.json 可覆盖内置价格）
   plans.py       # 订阅套餐注册表（扩展新套餐的接入点）
   store.py       # 额度快照 SQLite（唯一写入点）
   readers/       # 只读解析 zcode db.sqlite / opencode.db / codex rollout 列表
   ui/            # TUI 四个标签页
-run.bat / requirements.txt / README.md
+run.bat / run.sh / install.bat / install.sh / requirements.txt / README.md
 ```
 
 ## 常见问题

@@ -26,6 +26,8 @@ from .ui.quota_tab import fmt_countdown
 from .zen_client import QuotaSnapshot, WindowUsage, fmt_units, ordered_windows
 
 APP_DIR = Path(__file__).resolve().parent.parent
+# 软件显示名；正式全名 daipulse_sqdai 用于 README / launcher 注释
+PRODUCT_NAME = "DaiPulse"
 
 MIN_W, MIN_H = 280, 200   # 高度下限保证 3 窗口 + 底部信息行在 DPI 缩放下不挤压
 MAX_W, MAX_H = 900, 700
@@ -83,7 +85,7 @@ class QuotaWidget:
             pass
 
         self.root = tk.Tk()
-        self.root.title("OpenCode Go 额度小部件")
+        self.root.title(f"{PRODUCT_NAME} · 额度悬浮窗")
         self._w = max(MIN_W, int(self.cfg.widget_width))
         self._h = max(MIN_H, int(self.cfg.widget_height))
         self.root.geometry(f"{self._w}x{self._h}+40+40")
@@ -111,10 +113,22 @@ class QuotaWidget:
         self._topmost_var = tk.BooleanVar(value=self.cfg.widget_topmost)
         self._menu.add_checkbutton(label="置顶", variable=self._topmost_var,
                                    command=self._toggle_topmost)
-        self._menu.add_command(label="退出", command=self.root.destroy)
+        self._menu.add_command(label="隐藏", state="disabled",
+                               command=self._hide_now)
+        self._hide_idx = int(self._menu.index("end"))
+        self._menu.add_command(label="退出", command=self._quit)
 
         self._bg_image: ImageTk.PhotoImage | None = None
         self._data = None
+        self._tray = None
+        if os.name == "nt":
+            self._tray_q: queue.Queue = queue.Queue()
+            try:
+                from .tray import TrayIcon
+                self._tray = TrayIcon(self._tray_q)
+                self._tray.start(PRODUCT_NAME)
+            except Exception:
+                self._tray = None
         self._thread = threading.Thread(target=self._worker, daemon=True)
         self._thread.start()
         self.root.after(200, self._pump)
@@ -172,13 +186,80 @@ class QuotaWidget:
 
     def _pump(self) -> None:
         """主线程每 500ms 检查队列并重绘。"""
+        self._drain_tray()
         try:
             while True:
                 self._data = self._q.get_nowait()
         except queue.Empty:
             pass
         self._draw()
+        if self._tray is not None:
+            color, tip = self._tray_state()
+            self._tray.update(color, tip)
         self.root.after(500, self._pump)
+
+    def _drain_tray(self) -> None:
+        """托盘事件：左键切换显示/隐藏，右键弹部件菜单。"""
+        if self._tray is None:
+            return
+        try:
+            while True:
+                evt = self._tray_q.get_nowait()
+                kind = evt[0]
+                if kind == "toggle":
+                    self._toggle_hidden()
+                elif kind == "menu":
+                    x = evt[1] if len(evt) > 1 else 0
+                    y = evt[2] if len(evt) > 2 else 0
+                    self._menu.tk_popup(x, y)
+                elif kind == "ready":
+                    ok = len(evt) > 1 and bool(evt[1])
+                    if ok:
+                        self._menu.entryconfig(self._hide_idx, state="normal")
+                    else:
+                        self._log_line("托盘图标注册失败，菜单「隐藏」保持禁用")
+        except queue.Empty:
+            pass
+
+    def _tray_state(self) -> tuple[str, str]:
+        """托盘图标（颜色, tooltip）：取剩余最少的窗口。"""
+        grey = "#8b949e"
+        snap = self._data[0] if self._data else None
+        if snap is None or not snap.ok or not snap.windows:
+            return grey, f"{PRODUCT_NAME}（数据不可用）"
+        u = min(snap.windows.values(), key=lambda w: w.remaining_percent)
+        tip = f"{PRODUCT_NAME}｜剩 {u.remaining_percent:.0f}%（{u.label}）"
+        return self._row_color(u), tip
+
+    def _toggle_hidden(self) -> None:
+        if self.root.state() == "withdrawn":
+            self.root.deiconify()
+            self.root.attributes("-topmost", self.cfg.widget_topmost)
+            self.root.attributes("-alpha", self.cfg.widget_opacity)
+            self._poke()
+        else:
+            self.root.withdraw()
+
+    def _hide_now(self) -> None:
+        self.root.withdraw()
+
+    def _quit(self) -> None:
+        if self._tray is not None:
+            try:
+                self._tray.stop()      # 移除托盘图标后退出
+            except Exception:
+                pass
+        self.root.destroy()
+
+    def _log_line(self, text: str) -> None:
+        try:
+            APP_DIR.joinpath("data").mkdir(parents=True, exist_ok=True)
+            with open(APP_DIR / "data" / "widget_error.log", "a",
+                      encoding="utf-8") as f:
+                f.write(datetime.now().strftime("%m-%d %H:%M:%S ")
+                        + text + "\n")
+        except OSError:
+            pass
 
     def _tick_60s(self) -> None:
         self._draw()
@@ -218,16 +299,25 @@ class QuotaWidget:
         ls9 = f_lab.metrics("linespace")
         right_x = w - GRIP - 8
 
-        # 标题行：左套餐名（超宽截断避免与右侧相撞）+ 右更新时间
-        updated = f"更新于 {datetime.now().strftime('%H:%M')}"
-        title = self.plan.name
-        avail = w - GRIP - 10 - 12 - f_small.measure(updated) - 12
-        while title and f_title.measure(title + "…") > avail:
-            title = title[:-1]
-        if title != self.plan.name and title:
-            title += "…"
-        c.create_text(12, 14, anchor="w", text=title,
+        # 标题行：产品名（主）+ 当前套餐（弱化跟随）+ 右更新时间
+        updated = f"更新 {datetime.now().strftime('%H:%M')}"
+        c.create_text(12, 14, anchor="w", text=PRODUCT_NAME,
                       fill=COLOR_FG, font=_font(11, True))
+        plan_name = self.plan.name
+        f_bold8 = tkfont.Font(font=_font(8, True))
+        plan_text_x = 12 + f_title.measure(PRODUCT_NAME) + 6 + 3 + 4
+        avail = right_x - 10 - f_small.measure(updated) - 8 - plan_text_x
+        while plan_name and f_bold8.measure(plan_name + "…") > avail:
+            plan_name = plan_name[:-1]
+        if plan_name != self.plan.name and plan_name:
+            plan_name += "…"
+        if plan_name:
+            # 3px 手绘小圆点分隔，居中于标题行
+            cx = 12 + f_title.measure(PRODUCT_NAME) + 6 + 1.5
+            c.create_oval(cx - 1.5, 13.5, cx + 1.5, 16.5,
+                          fill=COLOR_DIM, outline="")
+            c.create_text(plan_text_x, 15, anchor="w", text=plan_name,
+                          fill=COLOR_FG, font=_font(8, True))
         c.create_text(w - GRIP - 10, 14, anchor="e", text=updated,
                       fill=COLOR_DIM, font=_font(8))
 

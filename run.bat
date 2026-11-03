@@ -1,5 +1,5 @@
 @echo off
-rem OpenCode Go quota tracker - unified launcher
+rem daipulse_sqdai - unified launcher
 rem Starts the floating desktop widget (no console window left behind).
 rem TUI dashboard can be opened from the widget right-click menu,
 rem or manually: python -X utf8 -m app.main
