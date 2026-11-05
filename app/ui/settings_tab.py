@@ -5,7 +5,8 @@ import asyncio
 
 from rich.text import Text
 from textual.containers import Horizontal, Vertical
-from textual.widgets import Button, Input, Static
+from textual.message import Message
+from textual.widgets import Button, Input, Select, Static
 
 from .. import config as cfg
 from ..zen_client import test_connection
@@ -19,7 +20,25 @@ def mask(key: str) -> str:
     return f"{key[:8]}...{key[-4:]}"
 
 
+def _plan_options() -> list[tuple[str, str]]:
+    """下拉选项：(显示名, plan_id)。未接入额度接口的套餐附加提示。"""
+    from ..plans import enabled_plans, QUOTA_FETCHERS
+    return [
+        (p.name if p.quota_type in QUOTA_FETCHERS
+         else f"{p.name}（额度页待接入）", p.id)
+        for p in enabled_plans()
+    ]
+
+
 class SettingsTab(Vertical):
+    PLAN_LABEL_ID = "plan-label"
+
+    class PlanChanged(Message):
+        """设置页切了套餐 → 主 App 刷顶栏并立即拉一轮数据。"""
+
+        def __init__(self, plan_id: str) -> None:
+            super().__init__()
+            self.plan_id = plan_id
     def __init__(self, cfg_obj: cfg.Config, **kwargs):
         super().__init__(**kwargs)
         self._cfg = cfg_obj
@@ -30,10 +49,10 @@ class SettingsTab(Vertical):
 
         with Horizontal(classes="setting-row"):
             yield Static("当前套餐：", classes="setting-label")
-            yield Button("◀ 切换 (s)", id="plan-prev-btn")
-            self._plan_label = Static("", id="plan-label")
-            yield self._plan_label
-            yield Button("切换 ▶", id="plan-next-btn")
+            yield Select(_plan_options(), value=self._cfg.active_plan,
+                         allow_blank=False, id="plan-select")
+        self._plan_label = Static("", id=self.PLAN_LABEL_ID)
+        yield self._plan_label
 
         with Horizontal(classes="setting-row"):
             yield Static("API key 覆盖：", classes="setting-label")
@@ -94,17 +113,16 @@ class SettingsTab(Vertical):
             self._save()
         elif event.button.id == "test-btn":
             self.run_worker(self._do_test(), exclusive=True)
-        elif event.button.id in ("plan-prev-btn", "plan-next-btn"):
-            from .. import plans as plans_mod
-            if event.button.id == "plan-prev-btn":
-                # 反向循环：往前两次再往后一次
-                nxt = plans_mod.cycle_plan(self._cfg.active_plan)
-                nxt = plans_mod.cycle_plan(nxt.id)
-            else:
-                nxt = plans_mod.cycle_plan(self._cfg.active_plan)
-            self._cfg.active_plan = nxt.id
-            self._cfg.save()
-            self._update_plan_label()
+
+    def on_select_changed(self, event: "Select.Changed") -> None:
+        from .. import plans as plans_mod
+        if str(event.value) == self._cfg.active_plan:
+            return
+        plan = plans_mod.get_plan(str(event.value))
+        self._cfg.active_plan = plan.id
+        self._cfg.save()
+        self._update_plan_label()
+        self.post_message(self.PlanChanged(plan.id))
 
     def _update_plan_label(self) -> None:
         from .. import plans as plans_mod

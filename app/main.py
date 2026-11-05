@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import asyncio
 
+from textual import on
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
@@ -111,6 +112,13 @@ class OCGoQuotaApp(App):
     def action_refresh_all(self) -> None:
         self._ui_tick()
         self.notify("已刷新", timeout=2)
+
+    @on(SettingsTab.PlanChanged)
+    def plan_changed(self, event: SettingsTab.PlanChanged) -> None:
+        plan = plans.get_plan(event.plan_id)
+        self.sub_title = f"当前套餐: {plan.name}"
+        self._ui_tick()
+        self.notify(f"已切换到套餐：{plan.name}", timeout=3)
 
     def action_switch_plan(self) -> None:
         next_plan = plans.cycle_plan(self.cfg.active_plan)

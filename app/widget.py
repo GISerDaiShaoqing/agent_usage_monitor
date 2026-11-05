@@ -107,7 +107,17 @@ class QuotaWidget:
         self.canvas.bind("<Button-3>", self._on_menu)
         self._menu = tk.Menu(self.root, tearoff=0)
         self._menu.add_command(label="刷新", command=self._poke)
-        self._menu.add_command(label="切换套餐", command=self._cycle_plan)
+        self._plan_var = tk.StringVar(value=self.plan.id)
+        plan_menu = tk.Menu(self._menu, tearoff=0)
+        installed = set(plans.QUOTA_FETCHERS)
+        for p in plans.enabled_plans():
+            label = (p.name if p.quota_type in installed
+                     else f"{p.name}（额度页待接入）")
+            plan_menu.add_radiobutton(
+                label=label, value=p.id, variable=self._plan_var,
+                command=lambda pid=p.id: self._switch_plan(pid))
+        self._plan_menu = plan_menu
+        self._menu.add_cascade(label="切换套餐", menu=plan_menu)
         self._menu.add_command(label="打开 TUI 仪表盘", command=self._open_tui)
         self._menu.add_separator()
         self._topmost_var = tk.BooleanVar(value=self.cfg.widget_topmost)
@@ -211,6 +221,7 @@ class QuotaWidget:
                 elif kind == "menu":
                     x = evt[1] if len(evt) > 1 else 0
                     y = evt[2] if len(evt) > 2 else 0
+                    self._plan_var.set(self.plan.id)
                     self._menu.tk_popup(x, y)
                 elif kind == "ready":
                     ok = len(evt) > 1 and bool(evt[1])
@@ -461,6 +472,7 @@ class QuotaWidget:
         self._mode = None
 
     def _on_menu(self, event) -> None:
+        self._plan_var.set(self.plan.id)
         self._menu.tk_popup(event.x_root, event.y_root)
 
     def _open_tui(self) -> None:
@@ -504,9 +516,11 @@ class QuotaWidget:
         self.cfg.widget_topmost = bool(self._topmost_var.get())
         self.cfg.save()
 
-    def _cycle_plan(self) -> None:
-        self.plan = plans.cycle_plan(self.plan.id)
-        self.cfg.active_plan = self.plan.id
+    def _switch_plan(self, plan_id: str) -> None:
+        if plan_id == self.plan.id:
+            return
+        self.plan = plans.get_plan(plan_id)
+        self.cfg.active_plan = plan_id
         self.cfg.save()
         self._poke()
 
