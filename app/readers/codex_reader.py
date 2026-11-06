@@ -44,7 +44,8 @@ def _row_for(agg: dict, model: str) -> ModelUsageRow:
     key = ("codex", model)
     row = agg.get(key)
     if row is None:
-        row = agg[key] = ModelUsageRow(model=model, provider="codex")
+        row = agg[key] = ModelUsageRow(
+            model=model, provider="codex", source="codex")
     return row
 
 

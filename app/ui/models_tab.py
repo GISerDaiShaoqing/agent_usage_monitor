@@ -75,6 +75,7 @@ class ModelsTab(Vertical):
     def _load_and_render(self) -> None:
         from ..readers.zcode_reader import read_zcode_usage
         from ..readers.opencode_reader import read_opencode_usage
+        from ..readers.dairh_reader import read_dairh_usage
         from ..readers.codex_reader import read_codex_usage
         from .. import plans as plans_mod
 
@@ -90,15 +91,37 @@ class ModelsTab(Vertical):
                               pricing=self._pricing)
         or_ = read_opencode_usage(since=since, pricing=self._pricing)
         if prefixes is not None:
-            # 切换套餐后 opencode 数据源也要按同一前缀过滤，
-            # 避免非当前套餐的模型混入统计
-            or_.rows = [r for r in or_.rows
-                        if any(r.provider.startswith(p) for p in prefixes)]
+            if flt:
+                # 用户显式前缀：与其他数据源同一规则
+                or_.rows = [r for r in or_.rows
+                            if any(r.provider.startswith(p) for p in prefixes)]
+            elif self._cfg.active_plan == "opencode-go":
+                # opencode CLI 的调用都落 provider "opencode"（zen 网关），
+                # 与 ZCode 侧 opencode-go-* 前缀不同名，按套餐语义放行
+                or_.rows = [r for r in or_.rows
+                            if r.provider.startswith("opencode")]
+            else:
+                # 其它套餐按各自前缀过滤，避免非当前套餐的模型混入统计
+                or_.rows = [r for r in or_.rows
+                            if any(r.provider.startswith(p) for p in prefixes)]
 
         # Codex 自带本地 rollout 记录，ZCode/OpenCode 的库看不到它的调用。
         # 默认（按套餐）模式下仅 opencode-go 套餐纳入——Codex 侧配置的
         # 就是该套餐的自定义 provider，调用都走它；用户显式过滤器则
         # 与其他数据源同一规则
+        # daiRH（R 包直连网关）的本地账本：provider 缺省 opencode-go
+        # （zen/go 网关），opencode-go 套餐下与 OpenCode 同源放行
+        dr = read_dairh_usage(since=since, pricing=self._pricing)
+        if prefixes is not None:
+            if flt:
+                dr.rows = [r for r in dr.rows
+                           if any(r.provider.startswith(p) for p in prefixes)]
+            elif self._cfg.active_plan == "opencode-go":
+                dr.rows = [r for r in dr.rows
+                           if r.provider.startswith("opencode")]
+            else:
+                dr.rows = []
+
         cr = read_codex_usage(since=since)
         if flt:
             if prefixes is not None:
@@ -109,19 +132,23 @@ class ModelsTab(Vertical):
         else:
             cr.rows = []
         reports = [zr, or_]
+        if dr.rows:
+            reports.append(dr)
         if cr.rows:
             reports.append(cr)
         self._rows = self._merge(*reports)
         self._warnings = zr.warnings + or_.warnings
-        if flt or self._cfg.active_plan == "opencode-go" or cr.rows:
-            self._warnings += cr.warnings
+        if flt or self._cfg.active_plan == "opencode-go" or dr.rows or cr.rows:
+            self._warnings += dr.warnings + cr.warnings
         self._render_table()
 
     def _merge(self, *reports: UsageReport) -> list[ModelUsageRow]:
         agg: dict[tuple[str, str], ModelUsageRow] = {}
         for rep in reports:
             for row in rep.rows:
-                key = (row.provider, row.model)
+                # source 入键：同名模型跨数据源（如 glm-5.3-flash 同名出现
+                # 在 ZCode / daiRH）不吞行，各自带后缀展示
+                key = (row.source, row.provider, row.model)
                 dst = agg.get(key)
                 if dst is None:
                     agg[key] = row
@@ -154,8 +181,13 @@ class ModelsTab(Vertical):
             bar = Text("█" * bar_len + "░" * (BAR_WIDTH - bar_len))
             bar.style = "cyan"
             model_text = Text(r.model)
-            if r.provider == "codex":
-                model_text.append(" ·codex", style="dim")
+            # 每行都标注数据源后缀：三个本地数据源平等，同名模型
+            # （如 glm-5.3-flash）跨源出现时一眼可分
+            suffix = {"": " ·zcode", "codex": " ·codex",
+                      "opencode": " ·opencode",
+                      "dairh": " ·daiRH"}.get(r.source, "")
+            if suffix:
+                model_text.append(suffix, style="dim")
             if r.errors:
                 model_text.append(f" ({r.errors} err)", style="red")
             table.add_row(

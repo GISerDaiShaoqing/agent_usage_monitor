@@ -4,7 +4,7 @@
 
 - **OpenCode Go**：5 小时 / 每周 / 每月三窗口额度（官方 /usage 端点，60s 轮询）
 - **ZCode Start Plan**（免费领取的 token）：GLM-5.3 / GLM-5.3-Flash 两个 token 池各自的额度与到期
-- 分模型 token 使用统计（ZCode + OpenCode + Codex 三个本地数据源）
+- 分模型 token 使用统计（ZCode + OpenCode + Codex 三个本地数据源，另有 daiRH 直连账本作可选第 4 源）
 - 预留槽位：智谱 GLM Coding Plan / Z.ai / Kimi 的额度接口待接入，模型页用量已可追踪
 
 纯只读、零侵入：不改变任何现有配置，不要求 cookie，唯一写入的是本目录下的 `data/snapshots.db`（额度历史快照）与自身 `config.json`。名字：**Dai = D + AI**（作者 sqdai），Pulse = 额度池的"脉象"，低额度即"心跳报警"（托盘图标绿/黄/红随最紧急窗口变色）。
@@ -132,7 +132,7 @@ python -X utf8 -m app.main       # TUI 仪表盘
 | `q` | 退出 |
 
 - **额度页**：每窗口一张卡片（进度条 + 已用/剩余百分比 + 重置倒计时）；Start Plan 的多模型 token 池各显示一张卡片并附剩余 token 数（如"剩 3亿"）；剩余 ≤15% 或已限流时红色警示
-- **模型页**：模型 × 请求数 / 输入 / 缓存读 / 缓存写 / 输出 / 推理 tokens / 估算花费（USD，无单价表价目的模型显示 `—`）。**Codex CLI / 桌面端的调用也计入**（`gpt-6-luna ·codex` 这样带来源标记），默认 opencode-go 套餐下自动纳入；其余套餐下需 provider 过滤显式匹配（数据源为 `~/.codex/sessions` 的本地 rollout 记录）
+- **模型页**：模型 × 请求数 / 输入 / 缓存读 / 缓存写 / 输出 / 推理 tokens / 估算花费（USD，无单价表价目的模型显示 `—`）。每行带数据源后缀（`·zcode` = ZCode 本地库 / `·opencode` = OpenCode CLI 本地库 / `·codex` = Codex 本地 rollout / `·daiRH` = daiRH 直连账本），同名模型跨源时一眼可分（如 `glm-5.3-flash ·zcode` 与 `glm-5.3-flash ·daiRH`）。**Codex CLI / 桌面端的调用也计入**，默认 opencode-go 套餐下自动纳入；其余套餐下需 provider 过滤显式匹配
 - **历史页**：剩余 % 随时间 sparkline（App 运行期间按轮询周期记录）
 
 ## 平台支持
@@ -169,10 +169,21 @@ Start Plan 不是"5 小时/周/月"三窗口，而是**一次性发放的 token 
 
 1. **三窗口额度**：`GET https://opencode.ai/zen/go/v1/usage`（官方用法，`Authorization: Bearer <key>`），60 秒轮询。`percent` 为官方返回的已用比例。
 2. **Start Plan 额度**：见上一节（ZCode 本地日志解析为主）。
-3. **分模型统计**：只读解析本机 ZCode 数据库 `~/.zcode/cli/db/db.sqlite` 的 `model_usage` 表（每次请求一行）、OpenCode CLI 的 `~/.local/share/opencode/opencode.db`（`session_message` 表），以及 Codex CLI 的 `~/.codex/sessions/**/rollout-*.jsonl`（`token_usage_record` 每请求一条；老版本回退到 `token_count` 事件做差，模型取最近的 `turn_context`）。
+3. **分模型统计**：只读解析本机 ZCode 数据库 `~/.zcode/cli/db/db.sqlite` 的 `model_usage` 表（每次请求一行）、OpenCode CLI 的 `~/.local/share/opencode/opencode.db`（1.x 主表 `message` / 2.x 主表 `session_message`，自动适配），以及 Codex CLI 的 `~/.codex/sessions/**/rollout-*.jsonl`（`token_usage_record` 每请求一条；老版本回退到 `token_count` 事件做差，模型取最近的 `turn_context`）。
 4. **API key 自动发现**（设置页可覆盖）：环境变量 `OPENCODE_GO_API_KEY` → ZCode `~/.zcode/v2/provider_config.json`（`opencode-go-*` provider）→ OpenCode `auth.json`。
+5. **daiRH 直连调用**（可选，作者自研包）：账本机制与使用声明见下文「daiRH 数据源」节。
 
 默认只统计 **OpenCode Go 相关 provider**（自动发现：`opencode-go-chat/messages/responses` + `v2/config.json` 中 baseURL 指向 `opencode.ai/zen/go` 的自定义 provider）。设置页 provider 过滤填 `*` 可计入全部（含智谱/Z.ai 自家套餐的调用）。
+
+## daiRH 数据源（作者自研包，可选）
+
+`·daiRH` 来源行对应本工具作者的另一个自研项目 **[daiRH](https://github.com/GISerDaiShaoqing/daiRH)**——它把一个**能读写文件、运行代码、查文档的对话式编程 Agent 直接装进 RStudio 的 Viewer 面板**（面板 / CLI / 子代理 / 会话起标题 / 压缩总结器多 agent 场景，每笔模型请求经单一漏斗逐笔落账、token 按模型归一）。接入它之后，DaiPulse 的特色——**多 agent 的分模型统计与计费**（ZCode / OpenCode CLI / Codex / daiRH 四源同账本）——把 R 生态也纳入同一张表：`·daiRH` 行进模型页、算估算花费，与其余来源同一口径。
+
+使用声明（设计上都比较克制）：
+
+- **非必要组件**：不安装 daiRH 完全不影响 DaiPulse——额度页与其余三个本地数据源照常工作；装了 daiRH 则免费多得一层分模型明细。
+- **账本路径可能被自定义**：默认在 `R_user_dir("daiRH","data")/usage/usage.jsonl`（Windows 实测为 `%APPDATA%\R\data\R\daiRH\usage\usage.jsonl`），但 daiRH 支持 `options(daiRH.usage_dir=)` 把目录改到别处——改过之后 DaiPulse 的默认候选路径就读不到了，需把实际路径追加进 `app/config.py` 的 `DAIRH_USAGE_CANDIDATES`。
+- **记账可关、内容克制**：环境变量 `DAIRH_USAGE_LOG=0` 整体关闭 daiRH 记账；账本每行只记 token 数与模型名，不含对话内容；失败请求网关不计费、daiRH 也不落账。
 
 ## 配置（config.json，首次保存自动生成）
 
@@ -203,7 +214,7 @@ app/
   pricing.py     # 单价表（app/prices.json 可覆盖内置价格）
   plans.py       # 订阅套餐注册表（扩展新套餐的接入点）
   store.py       # 额度快照 SQLite（唯一写入点）
-  readers/       # 只读解析 zcode db.sqlite / opencode.db / codex rollout 列表
+  readers/       # 只读解析 zcode db.sqlite / opencode.db / codex rollout / daiRH 账本
   ui/            # TUI 四个标签页
 run.bat / run.sh / install.bat / install.sh / requirements.txt / README.md
 ```
@@ -214,6 +225,7 @@ run.bat / run.sh / install.bat / install.sh / requirements.txt / README.md
 - **Start Plan 额度显示"未找到数据"**：先运行一次 ZCode 桌面端（它会自动拉取余额并写入本地日志，约 2 分钟内本工具即可读到）；确认 `~/.zcode/v2/logs/` 下有当天日志
 - **Start Plan 已到期**：到期后额度卡会置灰并显示"已到期（X天前）"；若桌面端此后不再上报余额，该套餐会回到"未找到数据"状态，属正常现象
 - **模型页没数据**：确认 ZCode 的 `~/.zcode/cli/db/db.sqlite` 存在；检查 provider 过滤设置
+- **模型页没有 daiRH 行**：确认 daiRH 记账开启（环境变量 `DAIRH_USAGE_LOG` 未设为 0）且 `%APPDATA%\R\data\R\daiRH\usage\usage.jsonl` 存在（用过一次 daiRH 即有）；失败请求网关不计费、daiRH 也不落账，不显示属正常
 - **模型页没有 Codex 行**：确认 `~/.codex/sessions/` 下有 rollout 会话文件（用过一次 Codex 就有）；确认当前套餐为 opencode-go 或 provider 过滤能匹配（Codex 行带 `·codex` 标记）
 - **TUI 渲染乱码**：换 Windows Terminal 运行
 - **估算花费与官方不同**：单价取自 OpenCode Go 官方文档（`app/pricing.py` 内置，核对于 2026-10-30）；分档模型按低档价、DeepSeek 按谷段价估算，官方价目变动时可在 `app/prices.json` 覆盖修正

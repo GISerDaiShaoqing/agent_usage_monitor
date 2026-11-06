@@ -1,10 +1,13 @@
 """OpenCode 用量数据源（次要）：只读解析 ~/.local/share/opencode/opencode.db。
 
-schema（已实测，opencode 2.x）：
-- session_message(id, session_id, type, seq, time_created, time_updated, data JSON)
-  assistant 行的 data: model{id, providerID}, tokens{input, output, reasoning,
-  cache{read, write}}, time{created, completed}, cost
-- session_v2 含会话级聚合列，但按模型统计走 session_message。
+schema 兼容两个版本线（统计口径都是 assistant 行 data JSON 里的 tokens）：
+- 1.x（如 1.19.5）主表 message(id, session_id, time_created, time_updated, data)：
+  无 type 列，角色与模型平铺在 data——role、providerID、modelID、
+  tokens{input, output, reasoning, cache{read, write}}、time{created, completed}
+- 2.x（如 2.0.6 预览）主表 session_message(id, session_id, type, seq, ...)：
+  type 列区分角色，assistant 行 data.model = {id, providerID}，tokens/time 同形
+取表规则：非空的 message 优先，否则用 session_message（1.19.5 里它是空壳
+过渡表，两种主表并存时也不会双计）。
 """
 from __future__ import annotations
 
@@ -24,7 +27,7 @@ def _open_db(db_path: Path, warnings: list[str]) -> sqlite3.Connection:
     try:
         conn = sqlite3.connect(
             f"file:{db_path.as_posix()}?mode=ro", uri=True, timeout=5.0)
-        conn.execute("SELECT 1 FROM session_message LIMIT 1").fetchone()
+        conn.execute("SELECT COUNT(*) FROM sqlite_master").fetchone()
         return conn
     except sqlite3.Error as exc:
         warnings.append(f"opencode.db 只读打开失败（{exc}），改用临时副本")
@@ -56,14 +59,28 @@ def read_opencode_usage(
 
     conn = _open_db(db_path, report.warnings)
     try:
+        tables = {r[0] for r in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table'")}
+        if "message" in tables and conn.execute(
+                "SELECT 1 FROM message LIMIT 1").fetchone():
+            table, role_in_data = "message", True       # 1.x 主表
+        elif "session_message" in tables:
+            table, role_in_data = "session_message", False  # 2.x 主表
+        elif "message" in tables:
+            table, role_in_data = "message", True          # 空壳兜底
+        else:
+            report.warnings.append("opencode.db 没有 message/session_message 表，跳过")
+            return report
+
         agg: dict[tuple[str, str], ModelUsageRow] = {}
         cur = conn.execute(
-            "SELECT session_id, time_created, data FROM session_message"
-            " WHERE type = 'assistant'")
+            f"SELECT session_id, time_created, data FROM {table}")
         for _sid, _tc, data_raw in cur:
             try:
                 data = json.loads(data_raw or "{}")
             except json.JSONDecodeError:
+                continue
+            if role_in_data and data.get("role") != "assistant":
                 continue
             # 时间过滤：优先 data.time.completed/created (ms)
             ts = ((data.get("time", {}) or {}).get("completed")
@@ -73,8 +90,9 @@ def read_opencode_usage(
             if cutoff_ms is not None and ts < cutoff_ms:
                 continue
             model = (data.get("model") or {})
-            model_id = model.get("id") or "unknown"
-            provider = model.get("providerID") or "opencode"
+            model_id = model.get("id") or (data.get("modelID") or "unknown")
+            provider = str(model.get("providerID")
+                           or data.get("providerID") or "opencode")
             tokens = (data.get("tokens") or {})
             cache = (tokens.get("cache") or {})
             cache_r = max(0, int(cache.get("read") or 0))
@@ -87,7 +105,8 @@ def read_opencode_usage(
             row = agg.get(key)
             if row is None:
                 row = agg[key] = ModelUsageRow(
-                    model=key_model, provider=str(provider))
+                    model=key_model, provider=str(provider),
+                    source="opencode")
             row.input_uncached += max(0, inp - cache_r - cache_w)
             row.cache_read += cache_r
             row.cache_write += cache_w

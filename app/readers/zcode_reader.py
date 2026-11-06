@@ -24,6 +24,7 @@ OPENCODE_GO_PREFIXES = ("opencode-go",)
 class ModelUsageRow:
     model: str            # 归一化后的模型名
     provider: str
+    source: str = ""      # 数据源标记（""=ZCode；codex/opencode 由各自 reader 标注）
     requests: int = 0     # completed 请求数
     errors: int = 0
     input_uncached: int = 0

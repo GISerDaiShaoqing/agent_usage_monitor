@@ -174,6 +174,23 @@ class QuotaWidget:
                 rows = rows + read_codex_usage(since=since).rows
             except Exception:
                 pass
+            # OpenCode CLI 的调用同理（走 zen/go 网关，记在 opencode.db）
+            try:
+                from .readers.opencode_reader import read_opencode_usage
+                oc_rows = read_opencode_usage(since=since).rows
+                rows = rows + [r for r in oc_rows
+                               if r.provider.startswith("opencode")]
+            except Exception:
+                pass
+            # daiRH（R 包直连网关）同理：usage.jsonl 账本；无 agent 机器
+            # （如台式机）上这是分模型统计的主渠道
+            try:
+                from .readers.dairh_reader import read_dairh_usage
+                dr_rows = read_dairh_usage(since=since).rows
+                rows = rows + [r for r in dr_rows
+                               if r.provider.startswith("opencode")]
+            except Exception:
+                pass
         if not rows:
             return "7 天暂无用量"
         rows = sorted(rows, key=lambda r: r.processed, reverse=True)

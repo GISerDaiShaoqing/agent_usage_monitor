@@ -35,6 +35,32 @@ CODEX_SESSION_CANDIDATES = [
 ]
 
 
+def _r_user_dir(package: str) -> Path:
+    """复刻 tools::R_user_dir(package, "data") 的平台落位。
+
+    Windows 实测（daiRH 作者机器）= %APPDATA%\\R\\data\\R\\<pkg>，即
+    Roaming 而非 rappdirs 默认的 Local；unix/macOS 按 R 的 XDG 约定带 R 段。
+    """
+    import os
+    import sys
+    if os.name == "nt":
+        base = os.environ.get("APPDATA") or str(USER_HOME / "AppData" / "Roaming")
+        return Path(base) / "R" / "data" / "R" / package
+    if sys.platform == "darwin":
+        return USER_HOME / "Library" / "Application Support" / "R" / package
+    base = os.environ.get("XDG_DATA_HOME") or str(USER_HOME / ".local" / "share")
+    return Path(base) / "R" / package
+
+
+# daiRH（R 包直连客户端）的 token 用量账本：每次模型请求后追加一行 jsonl，
+# 行 schema 见 app/readers/dairh_reader.py。直连调用不落任何 agent 数据库，
+# 这个文件是 DaiPulse 统计它的唯一通道。~/.daiRH/usage.jsonl 为早期契约位兜底。
+DAIRH_USAGE_CANDIDATES = [
+    _r_user_dir("daiRH") / "usage" / "usage.jsonl",
+    USER_HOME / ".daiRH" / "usage.jsonl",
+]
+
+
 @dataclass
 class Config:
     api_key: str = ""                # 留空则自动发现
@@ -121,9 +147,16 @@ def _credential_sources():
 
     def from_opencode_auth(path: Path) -> str:
         data = json.loads(path.read_text(encoding="utf-8"))
-        entry = data.get("opencode-go") or {}
-        if entry.get("type") == "api_key" and entry.get("key"):
-            return entry["key"]
+        # opencode auth.json：API key 落 provider id "opencode"（type "api"）；
+        # "opencode-go" 为旧约定预留。OAuth 登录项没有 key 字段，自然跳过。
+        for entry_id in ("opencode-go", "opencode"):
+            entry = data.get(entry_id) or {}
+            if not isinstance(entry, dict):
+                continue
+            if (entry.get("key")
+                    and str(entry.get("type") or "").lower()
+                    in ("api_key", "api")):
+                return entry["key"]
         return ""
 
     yield ZCODE_PROVIDER_CONFIG, from_zcode
