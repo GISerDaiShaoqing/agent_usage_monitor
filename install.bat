@@ -1,5 +1,5 @@
 @echo off
-rem daipulse_sqdai - one-shot environment installer
+rem DaiPulse - one-shot environment installer
 rem Finds (or installs) a usable Python, installs dependencies.
 rem Launch the widget afterwards with run.bat.
 setlocal EnableDelayedExpansion

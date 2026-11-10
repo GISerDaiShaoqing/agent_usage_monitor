@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# daipulse_sqdai - environment check/installer for Linux/macOS (no sudo)
+# DaiPulse - environment check/installer for Linux/macOS (no sudo)
 # Verifies python3 + tkinter, installs dependencies; prints distro commands
 # when something is missing. Launch the widget afterwards with run.sh.
 set -u

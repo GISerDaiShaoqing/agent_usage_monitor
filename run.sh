@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# daipulse_sqdai - unified launcher for Linux/macOS
+# DaiPulse - unified launcher for Linux/macOS
 # Starts the floating desktop widget in the background.
 # TUI dashboard: right-click widget menu, or run: python -X utf8 -m app.main
 set -u

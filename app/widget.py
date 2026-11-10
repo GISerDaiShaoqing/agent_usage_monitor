@@ -26,7 +26,7 @@ from .ui.quota_tab import fmt_countdown
 from .zen_client import QuotaSnapshot, WindowUsage, fmt_units, ordered_windows
 
 APP_DIR = Path(__file__).resolve().parent.parent
-# 软件显示名；正式全名 daipulse_sqdai 用于 README / launcher 注释
+# 软件显示名（与 README 标题一致）
 PRODUCT_NAME = "DaiPulse"
 
 MIN_W, MIN_H = 280, 200   # 高度下限保证 3 窗口 + 底部信息行在 DPI 缩放下不挤压

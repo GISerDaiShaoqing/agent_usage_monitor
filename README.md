@@ -1,4 +1,4 @@
-# daipulse_sqdai — AI 编码订阅额度脉搏
+# DaiPulse — AI 编码订阅额度脉搏
 
 **DaiPulse** 为 AI 编码订阅做"脉搏监护"，当前覆盖：
 
