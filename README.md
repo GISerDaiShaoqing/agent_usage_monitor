@@ -4,10 +4,11 @@
 
 - **OpenCode Go**：5 小时 / 每周 / 每月三窗口额度（官方 /usage 端点，60s 轮询）
 - **ZCode Start Plan**（免费领取的 token）：GLM-5.3 / GLM-5.3-Flash 两个 token 池各自的额度与到期
-- 分模型 token 使用统计（ZCode + OpenCode + Codex 三个本地数据源，另有 daiRH 直连账本作可选第 4 源）
+- **DeepSeek 平台账户**（经 DSH 零配置复用）：余额（充值主钱包 + 赠币）轮询与历史
+- 分模型 token 使用统计（ZCode + OpenCode + Codex 本地数据源，另有 daiRH 账本 / DSH 记录作可选第 4/5 源）
 - 预留槽位：智谱 GLM Coding Plan / Z.ai / Kimi 的额度接口待接入，模型页用量已可追踪
 
-纯只读、零侵入：不改变任何现有配置，不要求 cookie，唯一写入的是本目录下的 `data/snapshots.db`（额度历史快照）与自身 `config.json`。名字：**Dai = D + AI**（作者 sqdai），Pulse = 额度池的"脉象"，低额度即"心跳报警"（托盘图标绿/黄/红随最紧急窗口变色）。
+纯只读、零侵入：不改变任何现有配置，不要求 cookie，唯一写入的是本目录下的 `data/snapshots.db`（额度历史快照）与自身 `config.json`。分模型用量统计全部为本机文件的离线解析，零网络；对外网络请求**只有各套餐的官方额度/余额查询**（OpenCode Go `/usage`、ZCode 余额兜底、DeepSeek 余额——其中 DeepSeek 复用 DSH 的本地凭据 token，仅随请求头发给 DeepSeek 官方服务器，不落盘、不转发任何第三方）。名字：**Dai = D + AI**（作者 sqdai），Pulse = 额度池的"脉象"，低额度即"心跳报警"（托盘图标绿/黄/红随最紧急窗口变色）。
 
 ---
 
@@ -115,7 +116,7 @@ python -X utf8 -m app.main       # TUI 仪表盘
 - **右键菜单**：刷新 / 切换套餐（子菜单逐项直选，当前项打点，未接额度接口的套餐标注"额度页待接入"）/ 打开 TUI 仪表盘 / 置顶 / 隐藏 / 退出
 - **隐藏与托盘**（仅 Windows）：右键"隐藏"把部件收起（隐藏期间额度轮询照常），系统托盘常驻小图标（**绿/黄/红圆点 + 白色心率线**）——左键点击显示/隐藏切换，右键弹出部件同款菜单；图标颜色即最紧急窗口的状态（绿正常 / 黄 ≤40% / 红 ≤15% 或限流 / 灰无数据），悬停 tooltip 显示"剩 X%（窗口名）"；退出时图标自动移除
 - **显示内容**：每条额度两行——上行是名称 + 剩余 %（Start Plan 分模型窗口还带剩余 token 数，如 `剩余 100%（3亿）`），下行是进度条 + 行内灰色**重置倒计时**（grant 额度显示"到期"）；剩余 ≤15% 或已限流时条形变红，已过期置灰。Start Plan 的多模型额度按模型逐条分行显示（如 GLM-5.3 / GLM-5.3-Flash 各一行）
-- **底部信息栏**：左侧为 7 天用量摘要（如 `glm-5.3 123 次 +2 模型（7天）`——次数为各模型请求数之和，只见用量最大那个模型名，其余模型计入 `+N 模型`，逐个明细看 TUI 模型页；超宽自动截断省略；套餐为 opencode-go 时把 Codex 的调用一并计入），右下角为最紧急窗口的重置倒计时
+- **底部信息栏**：左侧为 7 天用量摘要（如 `glm-5.3 123 次 +2 模型（7天）`——次数为各模型请求数之和，只见用量最大那个模型名，其余模型计入 `+N 模型`，逐个明细看 TUI 模型页；超宽自动截断省略；套餐为 opencode-go 时把 Codex 的调用一并计入；DSH 的调用按其配置归入对应套餐摘要），右下角为最紧急窗口的重置倒计时
 - 文字尺寸按系统 DPI 缩放自适应排版（高缩放比例下三窗口套餐建议把窗口拉高一些）
 - 60 秒自动刷新；异常会写入 `data/widget_error.log`
 
@@ -132,7 +133,7 @@ python -X utf8 -m app.main       # TUI 仪表盘
 | `q` | 退出 |
 
 - **额度页**：每窗口一张卡片（进度条 + 已用/剩余百分比 + 重置倒计时）；Start Plan 的多模型 token 池各显示一张卡片并附剩余 token 数（如"剩 3亿"）；剩余 ≤15% 或已限流时红色警示
-- **模型页**：模型 × 请求数 / 输入 / 缓存读 / 缓存写 / 输出 / 推理 tokens / 估算花费（USD，无单价表价目的模型显示 `—`）。每行带数据源后缀（`·zcode` = ZCode 本地库 / `·opencode` = OpenCode CLI 本地库 / `·codex` = Codex 本地 rollout / `·daiRH` = daiRH 直连账本），同名模型跨源时一眼可分（如 `glm-5.3-flash ·zcode` 与 `glm-5.3-flash ·daiRH`）。**Codex CLI / 桌面端的调用也计入**，默认 opencode-go 套餐下自动纳入；其余套餐下需 provider 过滤显式匹配
+- **模型页**：模型 × 请求数 / 输入 / 缓存读 / 缓存写 / 输出 / 推理 tokens / 估算花费（USD，无单价表价目的模型显示 `—`）。每行带数据源后缀（`·zcode` = ZCode 本地库 / `·opencode` = OpenCode CLI 本地库 / `·codex` = Codex 本地 rollout / `·daiRH` = daiRH 直连账本 / `·dsh` = DeepSeek Harness 本地记录），同名模型跨源时一眼可分（如 `glm-5.3-flash ·zcode` 与 `glm-5.3-flash ·daiRH`）。**Codex CLI / 桌面端的调用也计入**，默认 opencode-go 套餐下自动纳入；其余套餐下需 provider 过滤显式匹配。**DSH 行按 provider 归套餐**：DSH 默认直连 `deepseek-account`（只归"DeepSeek 平台"套餐页）；把 DSH 配置成指向 zen/go 网关的自定义 provider 时则归 opencode-go
 - **历史页**：剩余 % 随时间 sparkline（App 运行期间按轮询周期记录）
 
 ## 平台支持
@@ -151,6 +152,7 @@ python -X utf8 -m app.main       # TUI 仪表盘
 - 当前已实现：
   - **OpenCode Go**（官方 `/usage` 端点）
   - **ZCode Start Plan**（免费领取的 token，如 "ZCode Weekend Build" 这类一次性发放额度；详见下一节）
+  - **DeepSeek 平台**（余额 = 充值主钱包 + 赠币钱包，按用付款无窗口；凭据自动取自 DSH 登录态，详见「DSH 数据源与 DeepSeek 平台余额」节）
 - 预留槽位：智谱 GLM Coding Plan / Z.ai / Kimi——额度接口待接入（切过去会提示），但**模型页用量统计已可追踪**（按各自 provider 前缀过滤）
 - 接入新套餐：在 `app/plans.py` 的 `PLAN_DEFS` 注册 + `QUOTA_FETCHERS` 实现对应 fetcher 即可
 
@@ -172,6 +174,7 @@ Start Plan 不是"5 小时/周/月"三窗口，而是**一次性发放的 token 
 3. **分模型统计**：只读解析本机 ZCode 数据库 `~/.zcode/cli/db/db.sqlite` 的 `model_usage` 表（每次请求一行）、OpenCode CLI 的 `~/.local/share/opencode/opencode.db`（1.x 主表 `message` / 2.x 主表 `session_message`，自动适配），以及 Codex CLI 的 `~/.codex/sessions/**/rollout-*.jsonl`（`token_usage_record` 每请求一条；老版本回退到 `token_count` 事件做差，模型取最近的 `turn_context`）。
 4. **API key 自动发现**（设置页可覆盖）：环境变量 `OPENCODE_GO_API_KEY` → ZCode `~/.zcode/v2/provider_config.json`（`opencode-go-*` provider）→ OpenCode `auth.json`。
 5. **daiRH 直连调用**（可选，作者自研包）：账本机制与使用声明见下文「daiRH 数据源」节。
+6. **DSH 会话记录**（可选，DeepSeek Harness）：事件日志 + 会话投影双路只读解析，机制与使用声明见下文「DSH 数据源与 DeepSeek 平台余额」节。
 
 默认只统计 **OpenCode Go 相关 provider**（自动发现：`opencode-go-chat/messages/responses` + `v2/config.json` 中 baseURL 指向 `opencode.ai/zen/go` 的自定义 provider）。设置页 provider 过滤填 `*` 可计入全部（含智谱/Z.ai 自家套餐的调用）。
 
@@ -184,6 +187,23 @@ Start Plan 不是"5 小时/周/月"三窗口，而是**一次性发放的 token 
 - **非必要组件**：不安装 daiRH 完全不影响 DaiPulse——额度页与其余三个本地数据源照常工作；装了 daiRH 则免费多得一层分模型明细。
 - **账本路径可能被自定义**：默认在 `R_user_dir("daiRH","data")/usage/usage.jsonl`（Windows 实测为 `%APPDATA%\R\data\R\daiRH\usage\usage.jsonl`），但 daiRH 支持 `options(daiRH.usage_dir=)` 把目录改到别处——改过之后 DaiPulse 的默认候选路径就读不到了，需把实际路径追加进 `app/config.py` 的 `DAIRH_USAGE_CANDIDATES`。
 - **记账可关、内容克制**：环境变量 `DAIRH_USAGE_LOG=0` 整体关闭 daiRH 记账；账本每行只记 token 数与模型名，不含对话内容；失败请求网关不计费、daiRH 也不落账。
+
+## DSH 数据源与 DeepSeek 平台余额（可选）
+
+[DeepSeek Harness（DSH）](https://github.com/deepseek-ai/deepseek-harness) 是 DeepSeek 官方的 agent harness（"everything is a plugin"，桌面版为 Electron 应用）。装过并在其中登录过 DeepSeek 账户，DaiPulse 即零配置多得两样东西：
+
+**① 分模型用量（`·dsh` 后缀行，第 5 数据源）**——只读解析 DSH 的两份本地记录，同一会话两处都有时事件日志优先、投影兜底，按会话 id 防双计：
+
+- **事件日志** `<DSH_HOME>/sessions/--<工作区>--/<会话 id>/session[.vN].jsonl[.zstd]`（逐请求粒度，`assistant/message` / `assistant/attempt` / `compaction/summary` 三类计费事件；每代只取最高版本防重放双计、fork 前缀剔除）。读取方式参考了 metrik 的 `dsh.rs` 适配器；`.zstd` 解压可选（Python ≥3.14 标准库或第三方 `zstandard` 包，都没有则跳过并提示，投影路径不受影响）。
+- **会话投影** `<DSH_HOME>/storages/session_projcache/sessions/session-*.json`（桌面版全量覆盖、刷新及时）：`tokenUsage.totals` 为会话 lifetime 累计，模型归属取 `modelSelection.lastUsed`，时间取 `lastPromptAt`（会话级粒度，跨界会话整段计入最近时间段）。
+
+只记 token 与模型名，不落对话内容；`DSH_HOME` 环境变量重定向过数据目录时需自行适配 `app/config.py` 的 `dsh_home()`。
+
+**② DeepSeek 平台套餐（余额卡）**——DSH 登录后把平台账户 grant 存在 `~/.dsh/.credentials.yaml`，DaiPulse 复用它调官方账户端点 `GET platform.deepseek.com/api/v0/users/get_user_summary`（DSH 内部协议头 `x-dsh-auth-token`），额度页显示充值主钱包与赠币钱包余额（含累计消费），历史页记录余额曲线。**注意：余额是联网查询，与本节全离线的分模型统计（①）不同**——凭据只在内存中随请求头发给 DeepSeek 官方服务器，不落盘、不写日志、不发任何第三方；token 失效时在 DSH 里重新登录即可。
+
+- **非必要组件**：不装 DSH 完全不影响 DaiPulse——额度页与其余数据源照常工作。
+- **归套餐语义**：DSH 默认直连 `deepseek-account`，其用量只出现在"DeepSeek 平台"套餐页；把 DSH 配置成指向 zen/go 网关的自定义 provider 时归 opencode-go（与 Codex 同构）。
+- **计价**：DSH 的 `deepseek-flash` 即 deepseek-v4.1-flash（同一模型的平台展示名），估算花费按价目表同一行计。
 
 ## 配置（config.json，首次保存自动生成）
 
@@ -210,11 +230,12 @@ app/
   config.py      # 配置 + key/provider 自动发现
   zen_client.py  # OpenCode Go 官方 /usage 端点客户端
   zcode_client.py# ZCode Start Plan 额度（本地日志解析 + 余额接口兜底）
+  deepseek_client.py# DeepSeek 平台余额（DSH 凭据复用，官方账户端点）
   tray.py        # Windows 托盘图标（隐藏召回 + 额度状态心率圆点）
   pricing.py     # 单价表（app/prices.json 可覆盖内置价格）
   plans.py       # 订阅套餐注册表（扩展新套餐的接入点）
   store.py       # 额度快照 SQLite（唯一写入点）
-  readers/       # 只读解析 zcode db.sqlite / opencode.db / codex rollout / daiRH 账本
+  readers/       # 只读解析 zcode db.sqlite / opencode.db / codex rollout / daiRH 账本 / DSH 记录
   ui/            # TUI 四个标签页
 run.bat / run.sh / install.bat / install.sh / requirements.txt / README.md
 ```
@@ -226,6 +247,8 @@ run.bat / run.sh / install.bat / install.sh / requirements.txt / README.md
 - **Start Plan 已到期**：到期后额度卡会置灰并显示"已到期（X天前）"；若桌面端此后不再上报余额，该套餐会回到"未找到数据"状态，属正常现象
 - **模型页没数据**：确认 ZCode 的 `~/.zcode/cli/db/db.sqlite` 存在；检查 provider 过滤设置
 - **模型页没有 daiRH 行**：确认 daiRH 记账开启（环境变量 `DAIRH_USAGE_LOG` 未设为 0）且 `%APPDATA%\R\data\R\daiRH\usage\usage.jsonl` 存在（用过一次 daiRH 即有）；失败请求网关不计费、daiRH 也不落账，不显示属正常
+- **模型页没有 DSH（·dsh）行**：确认装了 DeepSeek Harness 并在里面跑过会话；`~/.dsh/storages/session_projcache/sessions/` 下有非零 token 的会话投影或 `~/.dsh/sessions/` 下有事件日志；`.zstd` 事件日志需要 Python ≥3.14 或 `pip install zstandard`（缺包时只跳过该文件并提示，投影路径不受影响）；DSH 直连 deepseek-account 的行只在"DeepSeek 平台"套餐页显示，opencode-go 页看不到属正常
+- **DeepSeek 套餐报"未找到 DSH 平台凭据"**：先在 DeepSeek Harness 里登录账户（`~/.dsh/.credentials.yaml` 有 `deepseek-account-platform/default` 的 grant token 即可自动发现）；报"凭据失效"则在 DSH 重新登录一次
 - **模型页没有 Codex 行**：确认 `~/.codex/sessions/` 下有 rollout 会话文件（用过一次 Codex 就有）；确认当前套餐为 opencode-go 或 provider 过滤能匹配（Codex 行带 `·codex` 标记）
 - **TUI 渲染乱码**：换 Windows Terminal 运行
 - **估算花费与官方不同**：单价取自 OpenCode Go 官方文档（`app/pricing.py` 内置，核对于 2026-10-30）；分档模型按低档价、DeepSeek 按谷段价估算，官方价目变动时可在 `app/prices.json` 覆盖修正

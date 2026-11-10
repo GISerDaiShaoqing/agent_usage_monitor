@@ -61,6 +61,14 @@ DAIRH_USAGE_CANDIDATES = [
 ]
 
 
+def dsh_home() -> Path:
+    """DSH（DeepSeek Harness）数据主仓。DSH_HOME 环境变量可指到别处
+    （metrik 同款规则），如重定向过需改回这里发现。"""
+    import os
+    custom = os.environ.get("DSH_HOME")
+    return Path(custom) if custom else USER_HOME / ".dsh"
+
+
 @dataclass
 class Config:
     api_key: str = ""                # 留空则自动发现

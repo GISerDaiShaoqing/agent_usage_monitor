@@ -81,6 +81,13 @@ class WindowCard(Static):
         else:
             color, tag = "green", ""
         lines = Text()
+        if usage.is_note_window:
+            # 余额型窗口（DeepSeek 钱包）：金额直显，无 %"额度"语义
+            lines.append(f"{usage.label}{tag}\n", style=f"bold {color}")
+            lines.append(f"{usage.note}\n", style=f"bold {color}")
+            lines.append("余额随消费即时变动", style="dim")
+            self.update(lines)
+            return
         lines.append(f"{usage.label} 额度{tag}\n", style=f"bold {color}")
         lines.append(render_bar(usage.used_percent))
         lines.append(f" {usage.used_percent:.0f}%\n", style=color)

@@ -69,12 +69,19 @@ class ModelPrice:
     cache_write: float | None = None   # 缓存写入单价；缺省按 input 价计
 
 
+# 别名表：不同客户端对同一模型的不同叫法，计费归到同一行价目。
+# DSH 里 deepseek-flash 即 deepseek-v4.1-flash（平台面向 harness 的展示名）。
+_ALIASES: dict[str, str] = {
+    "deepseek-flash": "deepseek-v4.1-flash",
+}
+
+
 def _normalize(model_id: str) -> str:
     """归一化模型名：小写、去掉 provider 前缀（如 opencode-go/）。"""
     name = model_id.strip().lower()
     if "/" in name:
         name = name.rsplit("/", 1)[-1]
-    return name
+    return _ALIASES.get(name, name)
 
 
 class Pricing:

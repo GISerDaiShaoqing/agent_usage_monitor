@@ -59,10 +59,16 @@ class WindowUsage:
     used_percent: float  # 已用 0-100
     resets_at: datetime | None
     units_remaining: int | None = None  # token 池剩余绝对值（Start Plan 分模型窗口有值）
+    note: str = ""       # 余额型窗口的自由文本（如 "¥12.35"），无 %"额度"语义
 
     @property
     def remaining_percent(self) -> float:
         return max(0.0, min(100.0, 100.0 - self.used_percent))
+
+    @property
+    def is_note_window(self) -> bool:
+        """余额型窗口：units_remaining 为空且带 note，渲染层直显金额。"""
+        return bool(self.note) and self.units_remaining is None
 
     @property
     def is_limited(self) -> bool:

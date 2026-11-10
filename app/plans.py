@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 from typing import Awaitable, Callable
 
 from . import config as cfg
+from .deepseek_client import fetch_quota as fetch_deepseek_balance
 from .zen_client import QuotaSnapshot, fetch_quota
 from .zcode_client import fetch_quota as fetch_zcode_plan_quota
 
@@ -23,8 +24,14 @@ async def _fetch_zen_go(api_key: str) -> QuotaSnapshot:
     return await fetch_quota(api_key)
 
 
+async def _fetch_deepseek_balance(api_key: str) -> QuotaSnapshot:
+    # 参数签名对齐注册表；余额读 DSH 本地凭据，与 api_key 无关
+    return await fetch_deepseek_balance()
+
+
 QUOTA_FETCHERS["zen-go"] = _fetch_zen_go
 QUOTA_FETCHERS["zcode-start-plan"] = fetch_zcode_plan_quota
+QUOTA_FETCHERS["deepseek-balance"] = _fetch_deepseek_balance
 
 
 @dataclass
@@ -65,19 +72,32 @@ PLAN_DEFS: dict[str, PlanDef] = {
         note="免费领取的 token 额度，随 ZCode 桌面端本地日志刷新",
         data_source="ZCode 桌面端本地日志",
     ),
+    "deepseek-balance": PlanDef(
+        id="deepseek-balance",
+        name="DeepSeek 平台",
+        quota_type="deepseek-balance",
+        provider_prefixes=("deepseek-account",),
+        note="DSH 登录过的账户余额（充值+赠币，按用付款）",
+        data_source="platform.deepseek.com 账户端点（DSH 本地凭据）",
+    ),
     "bigmodel-coding-plan": PlanDef(
         id="bigmodel-coding-plan",
         name="智谱 GLM Coding Plan",
         quota_type="bigmodel",
-        provider_prefixes=("builtin:bigmodel", "account:bigmodel"),
-        note="额度接口待接入；模型页用量统计已可追踪",
+        # 前缀收紧到 coding-plan 形态：宽的 bigmodel 前缀会把 Start Plan
+        # 免费池（provider 如 account:bigmodel-start-plan）误捞进来
+        provider_prefixes=("builtin:bigmodel-coding-plan",
+                           "account:bigmodel-coding-plan"),
+        note="额度接口待接入；模型页用量统计已可追踪（未续费时该页为空属正常）",
     ),
     "zai-coding-plan": PlanDef(
         id="zai-coding-plan",
         name="Z.ai Coding Plan",
         quota_type="zai",
-        provider_prefixes=("builtin:zai", "account:zai"),
-        note="额度接口待接入；模型页用量统计已可追踪",
+        # 同上：避免吞掉 zai-start-plan 的免费池行
+        provider_prefixes=("builtin:zai-coding-plan",
+                           "account:zai-coding-plan"),
+        note="额度接口待接入；模型页用量统计已可追踪（未续费时该页为空属正常）",
     ),
     "kimi-coding-plan": PlanDef(
         id="kimi-coding-plan",

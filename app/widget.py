@@ -191,6 +191,21 @@ class QuotaWidget:
                                if r.provider.startswith("opencode")]
             except Exception:
                 pass
+            # DSH 配置成 zen/go 网关时同理（deepseek-account 归 DS 套餐）
+            try:
+                from .readers.dsh_reader import read_dsh_usage
+                rows = rows + [r for r in read_dsh_usage(since=since).rows
+                               if r.provider.startswith("opencode")]
+            except Exception:
+                pass
+        elif self.plan.id == "deepseek-balance":
+            # DSH 直连 deepseek-account 的调用就是本套餐的主体
+            try:
+                from .readers.dsh_reader import read_dsh_usage
+                rows = rows + [r for r in read_dsh_usage(since=since).rows
+                               if r.provider.startswith("deepseek")]
+            except Exception:
+                pass
         if not rows:
             return "7 天暂无用量"
         rows = sorted(rows, key=lambda r: r.processed, reverse=True)
@@ -368,9 +383,13 @@ class QuotaWidget:
         last_bar_bottom = y
         for usage in ordered_windows(snap.windows):
             color = self._row_color(usage)
-            right = f"剩余 {usage.remaining_percent:.0f}%"
-            if usage.units_remaining is not None:
-                right += f"（{fmt_units(usage.units_remaining)}）"
+            if usage.is_note_window:
+                # 余额型窗口（DeepSeek 钱包）：金额直显，不渲染"剩余%"语义
+                right = usage.note
+            else:
+                right = f"剩余 {usage.remaining_percent:.0f}%"
+                if usage.units_remaining is not None:
+                    right += f"（{fmt_units(usage.units_remaining)}）"
             right_w = f_bold.measure(right)
             label = usage.label
             avail = right_x - 12 - right_w - 10

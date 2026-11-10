@@ -77,6 +77,7 @@ class ModelsTab(Vertical):
         from ..readers.opencode_reader import read_opencode_usage
         from ..readers.dairh_reader import read_dairh_usage
         from ..readers.codex_reader import read_codex_usage
+        from ..readers.dsh_reader import read_dsh_usage
         from .. import plans as plans_mod
 
         since = self._since()
@@ -131,15 +132,32 @@ class ModelsTab(Vertical):
             pass
         else:
             cr.rows = []
+        # DSH（DeepSeek Harness）本地记录：provider 随 DSH 里的配置——
+        # 默认 deepseek-account 只归 DeepSeek 平台套餐；配置成 zen/go
+        # 网关的自定义 provider（opencode 开头）才归 opencode-go
+        ds = read_dsh_usage(since=since)
+        if prefixes is not None:
+            if flt:
+                ds.rows = [r for r in ds.rows
+                           if any(r.provider.startswith(p) for p in prefixes)]
+            elif self._cfg.active_plan == "opencode-go":
+                ds.rows = [r for r in ds.rows
+                           if r.provider.startswith("opencode")]
+            else:
+                ds.rows = [r for r in ds.rows
+                           if any(r.provider.startswith(p) for p in prefixes)]
         reports = [zr, or_]
         if dr.rows:
             reports.append(dr)
         if cr.rows:
             reports.append(cr)
+        if ds.rows:
+            reports.append(ds)
         self._rows = self._merge(*reports)
         self._warnings = zr.warnings + or_.warnings
-        if flt or self._cfg.active_plan == "opencode-go" or dr.rows or cr.rows:
-            self._warnings += dr.warnings + cr.warnings
+        if flt or self._cfg.active_plan == "opencode-go" or dr.rows or cr.rows \
+                or ds.rows:
+            self._warnings += dr.warnings + cr.warnings + ds.warnings
         self._render_table()
 
     def _merge(self, *reports: UsageReport) -> list[ModelUsageRow]:
@@ -184,8 +202,8 @@ class ModelsTab(Vertical):
             # 每行都标注数据源后缀：三个本地数据源平等，同名模型
             # （如 glm-5.3-flash）跨源出现时一眼可分
             suffix = {"": " ·zcode", "codex": " ·codex",
-                      "opencode": " ·opencode",
-                      "dairh": " ·daiRH"}.get(r.source, "")
+                      "opencode": " ·opencode", "dairh": " ·daiRH",
+                      "dsh": " ·dsh"}.get(r.source, "")
             if suffix:
                 model_text.append(suffix, style="dim")
             if r.errors:
