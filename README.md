@@ -10,6 +10,15 @@
 
 纯只读、零侵入：不改变任何现有配置，不要求 cookie，唯一写入的是本目录下的 `data/snapshots.db`（额度历史快照）与自身 `config.json`。分模型用量统计全部为本机文件的离线解析，零网络；对外网络请求**只有各套餐的官方额度/余额查询**（OpenCode Go `/usage`、ZCode 余额兜底、DeepSeek 余额——其中 DeepSeek 复用 DSH 的本地凭据 token，仅随请求头发给 DeepSeek 官方服务器，不落盘、不转发任何第三方）。名字：**Dai = D + AI**（作者 sqdai），Pulse = 额度池的"脉象"，低额度即"心跳报警"（托盘图标绿/黄/红随最紧急窗口变色）。
 
+| 项目    | 信息                                                         |
+|:--------|:-------------------------------------------------------------|
+| 作者    | Shaoqing Dai                                                 |
+| 主页    | <https://gisersqdai.top/mycv/>                               |
+| GitHub  | [@GISerDaiShaoqing](https://github.com/GISerDaiShaoqing)     |
+| E-mail  | <dsq1993qingge@163.com>                                      |
+| ORCID   | [0000-0003-0858-4728](https://orcid.org/0000-0003-0858-4728) |
+| License | MIT                                                          |
+
 ---
 
 ## 致谢：本项目的核心思路来自 [keros68/metrik](https://github.com/keros68/metrik)
@@ -254,3 +263,9 @@ run.bat / run.sh / install.bat / install.sh / requirements.txt / README.md
 - **估算花费与官方不同**：单价取自 OpenCode Go 官方文档（`app/pricing.py` 内置，核对于 2026-10-30）；分档模型按低档价、DeepSeek 按谷段价估算，官方价目变动时可在 `app/prices.json` 覆盖修正
 - **小部件没弹出来**：看 `data/widget_error.log`
 - **Python 未被找到**：`run.bat` 顶部设 `PYTHON_PATH` 指向你的 python.exe
+
+---
+
+## 作者
+
+Shaoqing Dai · [ORCID 0000-0003-0858-4728](https://orcid.org/0000-0003-0858-4728) · [主页](https://gisersqdai.top/mycv/) · [GitHub](https://github.com/GISerDaiShaoqing)
