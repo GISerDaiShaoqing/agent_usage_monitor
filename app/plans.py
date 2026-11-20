@@ -12,6 +12,7 @@ from typing import Awaitable, Callable
 
 from . import config as cfg
 from .deepseek_client import fetch_quota as fetch_deepseek_balance
+from .workbuddy_client import fetch_quota as fetch_workbuddy_credits
 from .zen_client import QuotaSnapshot, fetch_quota
 from .zcode_client import fetch_quota as fetch_zcode_plan_quota
 
@@ -29,9 +30,15 @@ async def _fetch_deepseek_balance(api_key: str) -> QuotaSnapshot:
     return await fetch_deepseek_balance()
 
 
+async def _fetch_workbuddy_credits(api_key: str) -> QuotaSnapshot:
+    # 参数签名对齐注册表；凭据走 config.json / 环境变量 / 客户端明文 auth，与 api_key 无关
+    return await fetch_workbuddy_credits()
+
+
 QUOTA_FETCHERS["zen-go"] = _fetch_zen_go
 QUOTA_FETCHERS["zcode-start-plan"] = fetch_zcode_plan_quota
 QUOTA_FETCHERS["deepseek-balance"] = _fetch_deepseek_balance
+QUOTA_FETCHERS["workbuddy-credits"] = _fetch_workbuddy_credits
 
 
 @dataclass
@@ -79,6 +86,16 @@ PLAN_DEFS: dict[str, PlanDef] = {
         provider_prefixes=("deepseek-account",),
         note="DSH 登录过的账户余额（充值+赠币，按用付款）",
         data_source="platform.deepseek.com 账户端点（DSH 本地凭据）",
+    ),
+    "workbuddy-credits": PlanDef(
+        id="workbuddy-credits",
+        name="WorkBuddy（腾讯 CodeBuddy）",
+        quota_type="workbuddy-credits",
+        # 预留前缀：本地用量 reader（~/.workbuddy/projects JSONL）未接，
+        # 模型页在该套餐下暂空属预期；空元组会退化为不过滤（全量混入），不可用
+        provider_prefixes=("workbuddy", "codebuddy"),
+        note="官方 Credits 跨套餐求和；客户端 token 加密时需在 config.json 手动填 workbuddy_token",
+        data_source="WorkBuddy 官方 Credits 端点（get-user-resource）",
     ),
     "bigmodel-coding-plan": PlanDef(
         id="bigmodel-coding-plan",

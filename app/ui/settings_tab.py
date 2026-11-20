@@ -159,7 +159,10 @@ class SettingsTab(Vertical):
             ok, msg = await asyncio.to_thread(test_connection)
         elif plan.quota_type == "deepseek-balance":
             from ..deepseek_client import test_connection
-            ok, msg = await asyncio.to_thread(test_connection)
+            ok, msg = await test_connection()      # async 函数（原误用 to_thread 包协程）
+        elif plan.quota_type == "workbuddy-credits":
+            from ..workbuddy_client import test_connection
+            ok, msg = await test_connection()
         else:
             key = self._key_input.value.strip() or self._cfg.discovered_key
             ok, msg = await asyncio.to_thread(_sync_test, key)

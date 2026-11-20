@@ -137,6 +137,12 @@ class OCGoQuotaApp(App):
         if plan.quota_type == "zcode-start-plan":
             from .zcode_client import test_connection
             ok, msg = await asyncio.to_thread(test_connection)
+        elif plan.quota_type == "deepseek-balance":
+            from .deepseek_client import test_connection
+            ok, msg = await test_connection()
+        elif plan.quota_type == "workbuddy-credits":
+            from .workbuddy_client import test_connection
+            ok, msg = await test_connection()
         else:
             from .zen_client import test_connection
             ok, msg = await test_connection(

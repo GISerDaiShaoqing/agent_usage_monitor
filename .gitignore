@@ -5,3 +5,5 @@ data/
 __pycache__/
 *.pyc
 .venv/
+# metrik 源码参考临时目录（开发完成后整体删除）
+.tmp_ref/
