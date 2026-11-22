@@ -69,6 +69,24 @@ def dsh_home() -> Path:
     return Path(custom) if custom else USER_HOME / ".dsh"
 
 
+def workbuddy_project_roots() -> list[Path]:
+    """WorkBuddy/CodeBuddy CLI 会话转录目录（只读解析，第 6 用量源）。
+    桌面端把内置 CLI 的 home 重定向到 ~/.workbuddy；CODEBUDDY_CONFIG_DIR
+    环境变量重定向时优先；~/.codebuddy 为 CodeBuddy CLI 用户的落位。"""
+    import os
+    roots: list[Path] = []
+    env = os.environ.get("CODEBUDDY_CONFIG_DIR")
+    if env:
+        roots.append(Path(env) / "projects")
+    roots.append(USER_HOME / ".workbuddy" / "projects")
+    roots.append(USER_HOME / ".codebuddy" / "projects")
+    out: list[Path] = []
+    for r in roots:
+        if r not in out:
+            out.append(r)
+    return out
+
+
 @dataclass
 class Config:
     api_key: str = ""                # 留空则自动发现

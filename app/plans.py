@@ -91,10 +91,12 @@ PLAN_DEFS: dict[str, PlanDef] = {
         id="workbuddy-credits",
         name="WorkBuddy（腾讯 CodeBuddy）",
         quota_type="workbuddy-credits",
-        # 预留前缀：本地用量 reader（~/.workbuddy/projects JSONL）未接，
-        # 模型页在该套餐下暂空属预期；空元组会退化为不过滤（全量混入），不可用
+        # 本地用量 reader（~/.workbuddy/projects JSONL）已接入：模型页统计
+        # 装了客户端并跑过会话的机器上的分模型 token；前缀与 reader 的
+        # provider "workbuddy" 对齐
         provider_prefixes=("workbuddy", "codebuddy"),
-        note="免装客户端：扫码 refreshToken 主线 / 官网 Cookie 备用（config.json）",
+        note="免装客户端：扫码 refreshToken 主线 / Cookie 应急；模型页统计"
+             "~/.workbuddy 本地转录（装了客户端才有）",
         data_source="www.workbuddy.cn 官方积分端点（summary + free/paid-packages）",
     ),
     "bigmodel-coding-plan": PlanDef(

@@ -206,6 +206,14 @@ class QuotaWidget:
                                if r.provider.startswith("deepseek")]
             except Exception:
                 pass
+        elif self.plan.id == "workbuddy-credits":
+            # WorkBuddy 本地转录（~/.workbuddy/projects）：装了客户端并
+            # 跑过会话的机器才有数据；provider 固定 workbuddy
+            try:
+                from .readers.workbuddy_reader import read_workbuddy_usage
+                rows = rows + read_workbuddy_usage(since=since).rows
+            except Exception:
+                pass
         if not rows:
             return "7 天暂无用量"
         rows = sorted(rows, key=lambda r: r.processed, reverse=True)

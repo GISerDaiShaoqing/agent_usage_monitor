@@ -6,7 +6,7 @@
 - **ZCode Start Plan**（免费领取的 token）：GLM-5.3 / GLM-5.3-Flash 两个 token 池各自的额度与到期
 - **DeepSeek 平台账户**（经 DSH 零配置复用）：余额（充值主钱包 + 赠币）轮询与历史
 - **WorkBuddy（腾讯 CodeBuddy）**：积分总余额 + 四类分组 + 各包到期时间（免装客户端：扫码 OAuth refreshToken 长期凭据，官网 Cookie 备用）
-- 分模型 token 使用统计（ZCode + OpenCode + Codex 本地数据源，另有 daiRH 账本 / DSH 记录作可选第 4/5 源）
+- 分模型 token 使用统计（ZCode + OpenCode + Codex 本地数据源，另有 daiRH 账本 / DSH 记录 / WorkBuddy 转录作第 4/5/6 源）
 - 预留槽位：智谱 GLM Coding Plan / Z.ai / Kimi 的额度接口待接入，模型页用量已可追踪
 
 纯只读、零侵入：不改变任何现有配置，不要求 cookie，唯一写入的是本目录下的 `data/snapshots.db`（额度历史快照）与自身 `config.json`。分模型用量统计全部为本机文件的离线解析，零网络；对外网络请求**只有各套餐的官方额度/余额查询**（OpenCode Go `/usage`、ZCode 余额兜底、DeepSeek 余额、WorkBuddy 积分——其中 DeepSeek 复用 DSH 的本地凭据 token、WorkBuddy 用扫码 OAuth 的 refreshToken 或官网 Cookie（二选一，见「订阅套餐切换」节），凭据仅随请求头发给各自官方服务器，不落盘、不转发任何第三方）。名字：**Dai = D + AI**（作者 sqdai），Pulse = 额度池的"脉象"，低额度即"心跳报警"（托盘图标绿/黄/红随最紧急窗口变色）。
@@ -143,7 +143,7 @@ python -X utf8 -m app.main       # TUI 仪表盘
 | `q` | 退出 |
 
 - **额度页**：每窗口一张卡片（进度条 + 已用/剩余百分比 + 重置倒计时）；Start Plan 的多模型 token 池各显示一张卡片并附剩余 token 数（如"剩 3亿"）；剩余 ≤15% 或已限流时红色警示
-- **模型页**：模型 × 请求数 / 输入 / 缓存读 / 缓存写 / 输出 / 推理 tokens / 估算花费（USD，无单价表价目的模型显示 `—`）。每行带数据源后缀（`·zcode` = ZCode 本地库 / `·opencode` = OpenCode CLI 本地库 / `·codex` = Codex 本地 rollout / `·daiRH` = daiRH 直连账本 / `·dsh` = DeepSeek Harness 本地记录），同名模型跨源时一眼可分（如 `glm-5.3-flash ·zcode` 与 `glm-5.3-flash ·daiRH`）。**Codex CLI / 桌面端的调用也计入**，默认 opencode-go 套餐下自动纳入；其余套餐下需 provider 过滤显式匹配。**DSH 行按 provider 归套餐**：DSH 默认直连 `deepseek-account`（只归"DeepSeek 平台"套餐页）；把 DSH 配置成指向 zen/go 网关的自定义 provider 时则归 opencode-go
+- **模型页**：模型 × 请求数 / 输入 / 缓存读 / 缓存写 / 输出 / 推理 tokens / 估算花费（USD，无单价表价目的模型显示 `—`）。每行带数据源后缀（`·zcode` = ZCode 本地库 / `·opencode` = OpenCode CLI 本地库 / `·codex` = Codex 本地 rollout / `·daiRH` = daiRH 直连账本 / `·dsh` = DeepSeek Harness 本地记录 / `·workbuddy` = WorkBuddy/CodeBuddy 本地转录），同名模型跨源时一眼可分（如 `glm-5.3-flash ·zcode` 与 `glm-5.3-flash ·daiRH`）。**Codex CLI / 桌面端的调用也计入**，默认 opencode-go 套餐下自动纳入；其余套餐下需 provider 过滤显式匹配。**DSH 行按 provider 归套餐**：DSH 默认直连 `deepseek-account`（只归"DeepSeek 平台"套餐页）；把 DSH 配置成指向 zen/go 网关的自定义 provider 时则归 opencode-go。**`·workbuddy` 行只归 WorkBuddy 套餐**：解析 `~/.workbuddy/projects`（含 `~/.codebuddy/projects`）的本地会话转录，装了客户端并跑过会话的机器才有数据
 - **历史页**：剩余 % 随时间 sparkline（App 运行期间按轮询周期记录）
 
 ## 平台支持
@@ -163,7 +163,7 @@ python -X utf8 -m app.main       # TUI 仪表盘
   - **OpenCode Go**（官方 `/usage` 端点）
   - **ZCode Start Plan**（免费领取的 token，如 "ZCode Weekend Build" 这类一次性发放额度；详见下一节）
   - **DeepSeek 平台**（余额 = 充值主钱包 + 赠币钱包，按用付款无窗口；凭据自动取自 DSH 登录态，详见「DSH 数据源与 DeepSeek 平台余额」节）
-  - **WorkBuddy（腾讯 CodeBuddy）**（免装客户端监测积分：`get-user-resource-summary` 出总余额与四类分组（基础/赠送/购买/奖励），`get-user-resource-free-packages` 出各赠送包的 `CycleEndTime` 到期，积分卡按分组拆分；凭据可同时配置、自动择路——① 运行 `python -m app.workbuddy_client --login`（或双击 `login_workbuddy.bat`）写入 `workbuddy_refresh_token`（约半年一换，accessToken 自动续期）；② `workbuddy_cookie`（浏览器抓包整段 cURL 粘入，或一键抓取）。refreshToken 线被额度端点拒绝或续期失败时**自动降级** Cookie 线，无需手动切换；`TotalDosage` 是累计消耗不作余额展示，取不到数据报明确错误不写零值）
+  - **WorkBuddy（腾讯 CodeBuddy）**（免装客户端监测积分：`get-user-resource-summary` 出总余额与四类分组（基础/赠送/购买/奖励），`get-user-resource-free/paid-packages` 出各包的 `CycleEndTime` 到期，积分卡按分组拆分；凭据可同时配置、自动择路——① 运行 `python -m app.workbuddy_client --login`（或双击 `login_workbuddy.bat`）写入 `workbuddy_refresh_token`（约半年一换，accessToken 自动续期）；② `workbuddy_cookie`（浏览器抓包整段 cURL 粘入，或一键抓取）。refreshToken 线被额度端点拒绝或续期失败时**自动降级** Cookie 线，无需手动切换；`TotalDosage` 是累计消耗不作余额展示，取不到数据报明确错误不写零值。**模型页分模型用量**由 `~/.workbuddy/projects` 本地转录统计（装了客户端并跑过会话的机器才有））
 - 预留槽位：智谱 GLM Coding Plan / Z.ai / Kimi——额度接口待接入（切过去会提示），但**模型页用量统计已可追踪**（按各自 provider 前缀过滤）
 - 接入新套餐：在 `app/plans.py` 的 `PLAN_DEFS` 注册 + `QUOTA_FETCHERS` 实现对应 fetcher 即可
 

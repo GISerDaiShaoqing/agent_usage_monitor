@@ -78,6 +78,7 @@ class ModelsTab(Vertical):
         from ..readers.dairh_reader import read_dairh_usage
         from ..readers.codex_reader import read_codex_usage
         from ..readers.dsh_reader import read_dsh_usage
+        from ..readers.workbuddy_reader import read_workbuddy_usage
         from .. import plans as plans_mod
 
         since = self._since()
@@ -146,6 +147,17 @@ class ModelsTab(Vertical):
             else:
                 ds.rows = [r for r in ds.rows
                            if any(r.provider.startswith(p) for p in prefixes)]
+        # WorkBuddy/CodeBuddy 本地转录（~/.workbuddy/projects）：provider
+        # 固定 workbuddy，只归 WorkBuddy 套餐；其它套餐下为空属预期
+        wb = read_workbuddy_usage(since=since, pricing=self._pricing)
+        if prefixes is not None:
+            if flt:
+                wb.rows = [r for r in wb.rows
+                           if any(r.provider.startswith(p) for p in prefixes)]
+            elif self._cfg.active_plan == "workbuddy-credits":
+                pass
+            else:
+                wb.rows = []
         reports = [zr, or_]
         if dr.rows:
             reports.append(dr)
@@ -153,11 +165,15 @@ class ModelsTab(Vertical):
             reports.append(cr)
         if ds.rows:
             reports.append(ds)
+        if wb.rows:
+            reports.append(wb)
         self._rows = self._merge(*reports)
         self._warnings = zr.warnings + or_.warnings
         if flt or self._cfg.active_plan == "opencode-go" or dr.rows or cr.rows \
                 or ds.rows:
             self._warnings += dr.warnings + cr.warnings + ds.warnings
+        if self._cfg.active_plan == "workbuddy-credits" or wb.rows:
+            self._warnings += wb.warnings
         self._render_table()
 
     def _merge(self, *reports: UsageReport) -> list[ModelUsageRow]:
