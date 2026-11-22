@@ -73,9 +73,9 @@ def dsh_home() -> Path:
 class Config:
     api_key: str = ""                # 留空则自动发现
     zcode_token: str = ""            # ZCode Start Plan 的 JWT 手动覆盖（留空自动发现）
-    workbuddy_token: str = ""        # WorkBuddy/CodeBuddy accessToken 手动配置（留空自动发现）
-    workbuddy_uid: str = ""          # 可选：X-User-Id 头（企业/iOA 账号用，个人可空）
-    workbuddy_domain: str = ""       # 可选：X-Domain 头兼 host 候选首位（如 www.codebuddy.cn）
+    workbuddy_refresh_token: str = ""  # WorkBuddy 扫码 OAuth 的 refreshToken（约半年一换，accessToken 自动续期）
+    workbuddy_uid: str = ""          # 可选：X-User-Id 头（留空自动经 /v2/plugin/account 补齐）
+    workbuddy_cookie: str = ""       # 备用：官网 Cookie（粘整段抓包 cURL 亦可，自动提取 session/session_2）
     poll_interval: int = 60          # 额度轮询秒数
     refresh_interval: int = 30       # UI 刷新秒数
     provider_filter: str = ""        # 空为当前套餐默认；"*"全部；其它=provider 前缀
@@ -103,8 +103,8 @@ def load_config() -> Config:
     if CONFIG_PATH.exists():
         try:
             data = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
-            for f in ("api_key", "zcode_token", "workbuddy_token",
-                      "workbuddy_uid", "workbuddy_domain", "poll_interval",
+            for f in ("api_key", "zcode_token", "workbuddy_refresh_token",
+                      "workbuddy_uid", "workbuddy_cookie", "poll_interval",
                       "refresh_interval", "provider_filter", "active_plan",
                       "background_image", "background_dim", "widget_width",
                       "widget_height", "widget_opacity", "widget_topmost"):

@@ -94,8 +94,8 @@ PLAN_DEFS: dict[str, PlanDef] = {
         # 预留前缀：本地用量 reader（~/.workbuddy/projects JSONL）未接，
         # 模型页在该套餐下暂空属预期；空元组会退化为不过滤（全量混入），不可用
         provider_prefixes=("workbuddy", "codebuddy"),
-        note="官方 Credits 跨套餐求和；客户端 token 加密时需在 config.json 手动填 workbuddy_token",
-        data_source="WorkBuddy 官方 Credits 端点（get-user-resource）",
+        note="免装客户端：扫码 refreshToken 主线 / 官网 Cookie 备用（config.json）",
+        data_source="www.workbuddy.cn 官方积分端点（summary + free/paid-packages）",
     ),
     "bigmodel-coding-plan": PlanDef(
         id="bigmodel-coding-plan",

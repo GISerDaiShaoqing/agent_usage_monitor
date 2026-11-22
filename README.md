@@ -5,11 +5,11 @@
 - **OpenCode Go**：5 小时 / 每周 / 每月三窗口额度（官方 /usage 端点，60s 轮询）
 - **ZCode Start Plan**（免费领取的 token）：GLM-5.3 / GLM-5.3-Flash 两个 token 池各自的额度与到期
 - **DeepSeek 平台账户**（经 DSH 零配置复用）：余额（充值主钱包 + 赠币）轮询与历史
-- **WorkBuddy（腾讯 CodeBuddy）**：官方 Credits 跨套餐求和（接口逆向自 metrik；客户端 token 已加密时在 `config.json` 手动填 `workbuddy_token`）
+- **WorkBuddy（腾讯 CodeBuddy）**：积分总余额 + 四类分组 + 各包到期时间（免装客户端：扫码 OAuth refreshToken 长期凭据，官网 Cookie 备用）
 - 分模型 token 使用统计（ZCode + OpenCode + Codex 本地数据源，另有 daiRH 账本 / DSH 记录作可选第 4/5 源）
 - 预留槽位：智谱 GLM Coding Plan / Z.ai / Kimi 的额度接口待接入，模型页用量已可追踪
 
-纯只读、零侵入：不改变任何现有配置，不要求 cookie，唯一写入的是本目录下的 `data/snapshots.db`（额度历史快照）与自身 `config.json`。分模型用量统计全部为本机文件的离线解析，零网络；对外网络请求**只有各套餐的官方额度/余额查询**（OpenCode Go `/usage`、ZCode 余额兜底、DeepSeek 余额、WorkBuddy Credits——其中 DeepSeek 复用 DSH 的本地凭据 token、WorkBuddy 复用客户端明文 accessToken 或手动配置的 `workbuddy_token`，凭据仅随请求头发给各自官方服务器，不落盘、不转发任何第三方）。名字：**Dai = D + AI**（作者 sqdai），Pulse = 额度池的"脉象"，低额度即"心跳报警"（托盘图标绿/黄/红随最紧急窗口变色）。
+纯只读、零侵入：不改变任何现有配置，不要求 cookie，唯一写入的是本目录下的 `data/snapshots.db`（额度历史快照）与自身 `config.json`。分模型用量统计全部为本机文件的离线解析，零网络；对外网络请求**只有各套餐的官方额度/余额查询**（OpenCode Go `/usage`、ZCode 余额兜底、DeepSeek 余额、WorkBuddy 积分——其中 DeepSeek 复用 DSH 的本地凭据 token、WorkBuddy 用扫码 OAuth 的 refreshToken 或官网 Cookie（二选一，见「订阅套餐切换」节），凭据仅随请求头发给各自官方服务器，不落盘、不转发任何第三方）。名字：**Dai = D + AI**（作者 sqdai），Pulse = 额度池的"脉象"，低额度即"心跳报警"（托盘图标绿/黄/红随最紧急窗口变色）。
 
 | 项目    | 信息                                                         |
 |:--------|:-------------------------------------------------------------|
@@ -163,9 +163,45 @@ python -X utf8 -m app.main       # TUI 仪表盘
   - **OpenCode Go**（官方 `/usage` 端点）
   - **ZCode Start Plan**（免费领取的 token，如 "ZCode Weekend Build" 这类一次性发放额度；详见下一节）
   - **DeepSeek 平台**（余额 = 充值主钱包 + 赠币钱包，按用付款无窗口；凭据自动取自 DSH 登录态，详见「DSH 数据源与 DeepSeek 平台余额」节）
-  - **WorkBuddy（腾讯 CodeBuddy）**（官方 Credits 跨套餐求和：`get-user-resource` 的 Accounts[] 按 `CycleCapacitySize/Remain` 汇总，重置时间取最早 `CycleEndTime`；凭据链 = `config.json` 的 `workbuddy_token` → 环境变量 `WORKBUDDY_ACCESS_TOKEN` → 客户端明文 auth `.info`。WorkBuddy 5.11.3+ 已把客户端 accessToken 加密（`$wbEncrypted`），加密时该路自动让位并提示手动配置，绝不写零值）
+  - **WorkBuddy（腾讯 CodeBuddy）**（免装客户端监测积分：`get-user-resource-summary` 出总余额与四类分组（基础/赠送/购买/奖励），`get-user-resource-free-packages` 出各赠送包的 `CycleEndTime` 到期，积分卡按分组拆分；凭据可同时配置、自动择路——① 运行 `python -m app.workbuddy_client --login`（或双击 `login_workbuddy.bat`）写入 `workbuddy_refresh_token`（约半年一换，accessToken 自动续期）；② `workbuddy_cookie`（浏览器抓包整段 cURL 粘入，或一键抓取）。refreshToken 线被额度端点拒绝或续期失败时**自动降级** Cookie 线，无需手动切换；`TotalDosage` 是累计消耗不作余额展示，取不到数据报明确错误不写零值）
 - 预留槽位：智谱 GLM Coding Plan / Z.ai / Kimi——额度接口待接入（切过去会提示），但**模型页用量统计已可追踪**（按各自 provider 前缀过滤）
 - 接入新套餐：在 `app/plans.py` 的 `PLAN_DEFS` 注册 + `QUOTA_FETCHERS` 实现对应 fetcher 即可
+
+### WorkBuddy 凭据获取（免装客户端）
+
+**推荐：一条命令**（任一台有 Python + 浏览器的机器都行，与是否安装 WorkBuddy 无关）。Windows 双击项目根目录的 **`login_workbuddy.bat`**（与 run.bat 同层，Python 自动探测、跑完窗口不关闭），或命令行：
+
+```bash
+python -m app.workbuddy_client --login
+```
+
+自动完成：打开授权链接 → 等扫码（5 分钟内，每 5 秒轮询）→ 校验 refreshToken 续期（服务端若轮换则采用最新值）→ 写入 `config.json`（uid 自动补齐）→ 立即试拉一次积分对账。refreshToken 约半年有效，期间 accessToken 由监测器自动续期（内存缓存），无需人工干预；过期/被轮换时额度页明确报错提示重新扫码，不显示假零值。
+
+**手动三步 curl**（想看清每一步、或临时没有 Python 环境时用；⚠️ `authUrl` 里的 `\u0026` 是 JSON 转义的 `&`，照抄原文会缺 state 参数、登录页报"登录链接不完整"——替换回 `&` 再打开，state 有时效，报错就重新发起第①步）：
+
+```bash
+# ① 发起授权（响应里拿 state 和 authUrl）
+curl -s -X POST "https://copilot.tencent.com/v2/plugin/auth/state?platform=workbuddy" \
+  -H "Content-Type: application/json" -H "X-Domain: www.codebuddy.cn" \
+  -H "X-Custom-Channel-Id: unknown" \
+  -H "X-No-Authorization: true" -H "X-No-User-Id: true" \
+  -H "X-No-Enterprise-Id: true" -H "X-No-Department-Info: true" -d '{}'
+
+# ② 浏览器打开 authUrl 扫码登录，然后轮询（每 5 秒，5 分钟内；未扫码时返回 code=11217）
+STATE=<第①步的state>
+while :; do
+  R=$(curl -s "https://copilot.tencent.com/v2/plugin/auth/token?state=$STATE" \
+      -H "X-Domain: www.codebuddy.cn" -H "X-No-Authorization: true" \
+      -H "X-No-User-Id: true" -H "X-No-Enterprise-Id: true" \
+      -H "X-No-Department-Info: true")
+  case "$R" in *refreshToken*) echo "$R"; break;; *) echo "等待扫码…"; sleep 5;; esac
+done
+
+# ③ refreshToken 填进 config.json：
+#   "workbuddy_refresh_token": "<refreshToken>"   （workbuddy_uid 可不填，自动补齐）
+```
+
+- Cookie 备用线（**同样一键**）：双击 `login_workbuddy_cookie.bat`（或 `python -m app.workbuddy_client --login-cookie`）——弹出内置浏览器窗口，在窗口内登录后自动按域抓取官网 Cookie（只发 workbuddy 域的键、带浏览器 UA，中转域同名键不误收）写入 `workbuddy_cookie`（首次运行自动安装 pywebview，用系统自带 WebView2，不下载浏览器）。手动等价：F12 → Network 任一请求 Copy as cURL → 整段粘进 `workbuddy_cookie`。session 有效期由服务端定，过期重跑本命令即可。refreshToken 线被拒/续期失败时自动启用本线；只配 Cookie 也能独立工作。
 
 ## ZCode Start Plan（免费 token）追踪原理
 
@@ -242,13 +278,14 @@ app/
   zen_client.py  # OpenCode Go 官方 /usage 端点客户端
   zcode_client.py# ZCode Start Plan 额度（本地日志解析 + 余额接口兜底）
   deepseek_client.py# DeepSeek 平台余额（DSH 凭据复用，官方账户端点）
+  workbuddy_client.py# WorkBuddy 积分（扫码 OAuth refreshToken 主线 / Cookie 备用，--login 一键凭据）
   tray.py        # Windows 托盘图标（隐藏召回 + 额度状态心率圆点）
   pricing.py     # 单价表（app/prices.json 可覆盖内置价格）
   plans.py       # 订阅套餐注册表（扩展新套餐的接入点）
   store.py       # 额度快照 SQLite（唯一写入点）
   readers/       # 只读解析 zcode db.sqlite / opencode.db / codex rollout / daiRH 账本 / DSH 记录
   ui/            # TUI 四个标签页
-run.bat / run.sh / install.bat / install.sh / requirements.txt / README.md
+run.bat / run.sh / install.bat / install.sh / login_workbuddy.bat / login_workbuddy_cookie.bat / requirements.txt / README.md
 ```
 
 ## 常见问题
